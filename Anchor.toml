@@ -6,8 +6,8 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-ip-core = "35pP3zCsTgs5EQ7UjMruosGyUKNoNuyYYoE7RY14VPH5"
-mycelium_ip_protocol = "H2fF2dH3qSeoR4s23xwyL4H186zNERU9P81h4Wh85nHP"
+ip_core = "3x8zi15UHjdD8CkqbBFX49SvcrDyh9gRfCZhDmnSBAZL"
+license = "LicE6QjUgS6pYt6QdBcqXE7kD2kFXXWKH2Z7YYY2YYY"
 
 [registry]
 url = "https://api.apr.dev"

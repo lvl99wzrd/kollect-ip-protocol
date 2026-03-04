@@ -47,10 +47,12 @@ Define explicit errors:
 - InvalidThreshold
 - ControllerLimitExceeded
 - ControllerNotFound
+- CannotRemoveLastController
 - InsufficientSignatures
 - EntityNotInitialized
 - InvalidHandle
 - HandleTooLong
+- EmptyHandle
 - HandleAlreadyExists
 - MetadataSchemaNotFound
 - InvalidMetadataRevision
@@ -58,6 +60,13 @@ Define explicit errors:
 - InvalidOwnership
 - DerivativeAlreadyExists
 - ArithmeticOverflow
+- EmptyCid
+- InvalidLicenseOwner
+- InvalidLicenseOrigin
+- DerivativesNotAllowed
+- LicenseExpired
+- InvalidTokenMint
+- InvalidTreasuryAuthority
 
 ---
 
@@ -362,7 +371,8 @@ Where:
 
 - controllers.len() ∈ [1, 5]
 - signature_threshold ∈ [1, controllers.len()]
-- creator must be in controllers
+- creator must be included in controllers during creation.
+- creator can be removed from controllers but only if signature_threshold is updated accordingly.
 - handle immutable
 - creator immutable
 - created_at immutable
