@@ -22,3 +22,7 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
+initialize_config = "npx ts-node scripts/initialize_config.ts"
+initialize_treasury = "npx ts-node scripts/initialize_treasury.ts"
+update_config = "npx ts-node scripts/update_config.ts"
+get_config = "npx ts-node scripts/get_config.ts"
