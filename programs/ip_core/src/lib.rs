@@ -64,17 +64,15 @@ pub mod ip_core {
         )
     }
 
-    /// Update entity controllers.
+    /// Update entity controllers by replacing the entire controller list.
     pub fn update_entity_controllers(
         ctx: Context<UpdateEntityControllers>,
-        action: ControllerAction,
-        controller: Pubkey,
-        new_threshold: Option<u8>,
+        new_controllers: Vec<Pubkey>,
+        new_threshold: u8,
     ) -> Result<()> {
         instructions::entity::update_entity_controllers::handler(
             ctx,
-            action,
-            controller,
+            new_controllers,
             new_threshold,
         )
     }

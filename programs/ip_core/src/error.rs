@@ -118,4 +118,12 @@ pub enum IpCoreError {
     /// Grantee does not match the child owner entity.
     #[msg("Grantee does not match the child owner entity")]
     InvalidGrantee,
+
+    /// Duplicate controller in the controller list.
+    #[msg("Duplicate controller: each controller must be unique")]
+    DuplicateController,
+
+    /// Controller list cannot be empty.
+    #[msg("Controller list cannot be empty: entity must have at least one controller")]
+    EmptyControllerList,
 }

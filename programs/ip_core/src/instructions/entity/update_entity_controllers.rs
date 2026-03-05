@@ -1,11 +1,10 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::MAX_CONTROLLERS;
-use crate::error::IpCoreError;
 use crate::state::Entity;
 use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::ENTITY_SEED;
-use crate::utils::validation::validate_threshold;
+use crate::utils::validation::{validate_controllers, validate_threshold};
 
 /// Accounts required for update_entity_controllers instruction.
 #[derive(Accounts)]
@@ -20,38 +19,27 @@ pub struct UpdateEntityControllers<'info> {
     // Remaining accounts are signers (controllers)
 }
 
-/// Action to perform on controllers.
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ControllerAction {
-    /// Add a new controller.
-    Add = 0,
-    /// Remove an existing controller.
-    Remove = 1,
-}
-
-/// Update entity controllers.
+/// Update entity controllers by replacing the entire controller list.
 ///
 /// # Arguments
 /// * `ctx` - Context containing accounts
-/// * `action` - Whether to add or remove a controller
-/// * `controller` - The controller pubkey to add or remove
-/// * `new_threshold` - Optional new signature threshold
+/// * `new_controllers` - The new list of controller pubkeys (replaces existing list)
+/// * `new_threshold` - The new signature threshold
 ///
 /// # Errors
-/// * `IpCoreError::InsufficientSignatures` - Multisig threshold not met
-/// * `IpCoreError::ControllerLimitExceeded` - Too many controllers (on add)
-/// * `IpCoreError::ControllerNotFound` - Controller not found (on remove)
-/// * `IpCoreError::CannotRemoveLastController` - Cannot remove the last controller
-/// * `IpCoreError::InvalidThreshold` - Invalid threshold value
+/// * `IpCoreError::InsufficientSignatures` - Multisig threshold not met by current controllers
+/// * `IpCoreError::EmptyControllerList` - New controller list is empty
+/// * `IpCoreError::ControllerLimitExceeded` - Too many controllers in new list
+/// * `IpCoreError::DuplicateController` - Duplicate pubkey in new controller list
+/// * `IpCoreError::InvalidThreshold` - Invalid threshold value for new controller count
 pub fn handler(
     ctx: Context<UpdateEntityControllers>,
-    action: ControllerAction,
-    controller: Pubkey,
-    new_threshold: Option<u8>,
+    new_controllers: Vec<Pubkey>,
+    new_threshold: u8,
 ) -> Result<()> {
     let entity = &mut ctx.accounts.entity;
 
-    // Validate multisig
+    // Validate multisig from current controllers
     let signer_keys = extract_signer_keys(ctx.remaining_accounts);
     validate_multisig_keys(
         &signer_keys,
@@ -59,46 +47,15 @@ pub fn handler(
         entity.signature_threshold,
     )?;
 
-    match action {
-        ControllerAction::Add => {
-            // Check limit before adding
-            if entity.controllers.len() >= MAX_CONTROLLERS {
-                return Err(IpCoreError::ControllerLimitExceeded.into());
-            }
+    // Validate the new controller list
+    validate_controllers(&new_controllers, MAX_CONTROLLERS)?;
 
-            // Don't add duplicates
-            if !entity.controllers.contains(&controller) {
-                entity.controllers.push(controller);
-            }
-        }
-        ControllerAction::Remove => {
-            // Cannot remove the last controller
-            if entity.controllers.len() == 1 {
-                return Err(IpCoreError::CannotRemoveLastController.into());
-            }
+    // Validate threshold against new controller count
+    validate_threshold(new_threshold, new_controllers.len())?;
 
-            // Find and remove the controller
-            let position = entity
-                .controllers
-                .iter()
-                .position(|&c| c == controller)
-                .ok_or(IpCoreError::ControllerNotFound)?;
-
-            entity.controllers.remove(position);
-        }
-    }
-
-    // Update threshold if provided
-    if let Some(threshold) = new_threshold {
-        validate_threshold(threshold, entity.controllers.len())?;
-        entity.signature_threshold = threshold;
-    } else {
-        // Ensure current threshold is still valid after changes
-        if entity.signature_threshold as usize > entity.controllers.len() {
-            // Auto-adjust threshold to controller count
-            entity.signature_threshold = entity.controllers.len() as u8;
-        }
-    }
+    // Replace controllers and threshold
+    entity.controllers = new_controllers;
+    entity.signature_threshold = new_threshold;
 
     // Update timestamp
     let clock = Clock::get()?;

@@ -146,11 +146,15 @@ describe("ip_core entity", () => {
       await program.methods.createEntity(handle, [], 1).rpc();
     });
 
-    it("adds a controller", async () => {
+    it("replaces controller list with additional controller", async () => {
       const newController = Keypair.generate();
 
+      // Replace with both creator and new controller
       await program.methods
-        .updateEntityControllers({ add: {} }, newController.publicKey, null)
+        .updateEntityControllers(
+          [creator.publicKey, newController.publicKey],
+          1,
+        )
         .accounts({
           entity: entityPda,
         })
@@ -166,31 +170,17 @@ describe("ip_core entity", () => {
           (c) => c.toString() === newController.publicKey.toString(),
         ),
       ).to.be.true;
+      expect(
+        entity.controllers.some(
+          (c) => c.toString() === creator.publicKey.toString(),
+        ),
+      ).to.be.true;
     });
 
-    it("fails to remove last controller", async () => {
-      // First remove the extra controller we added in previous test
-      const entity = await program.account.entity.fetch(entityPda);
-      const extraController = entity.controllers.find(
-        (c) => c.toString() !== creator.publicKey.toString(),
-      );
-
-      if (extraController) {
-        await program.methods
-          .updateEntityControllers({ remove: {} }, extraController, null)
-          .accounts({
-            entity: entityPda,
-          })
-          .remainingAccounts([
-            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-          ])
-          .rpc();
-      }
-
-      // Now try to remove the last (and only) controller
+    it("fails with empty controller list", async () => {
       try {
         await program.methods
-          .updateEntityControllers({ remove: {} }, creator.publicKey, null)
+          .updateEntityControllers([], 1)
           .accounts({
             entity: entityPda,
           })
@@ -200,27 +190,33 @@ describe("ip_core entity", () => {
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
-        expect(err.toString()).to.include("CannotRemoveLastController");
+        expect(err.toString()).to.include("EmptyControllerList");
       }
     });
 
-    it("successfully removes creator when other controllers exist", async () => {
-      // Add a new controller first
+    it("fails with duplicate controllers", async () => {
+      try {
+        await program.methods
+          .updateEntityControllers([creator.publicKey, creator.publicKey], 1)
+          .accounts({
+            entity: entityPda,
+          })
+          .remainingAccounts([
+            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+          ])
+          .rpc();
+        expect.fail("Should have failed");
+      } catch (err) {
+        expect(err.toString()).to.include("DuplicateController");
+      }
+    });
+
+    it("successfully replaces controllers removing creator", async () => {
       const newController = Keypair.generate();
 
+      // Replace with only the new controller (removing creator)
       await program.methods
-        .updateEntityControllers({ add: {} }, newController.publicKey, null)
-        .accounts({
-          entity: entityPda,
-        })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
-        .rpc();
-
-      // Now remove the creator (should succeed since there's another controller)
-      await program.methods
-        .updateEntityControllers({ remove: {} }, creator.publicKey, null)
+        .updateEntityControllers([newController.publicKey], 1)
         .accounts({
           entity: entityPda,
         })

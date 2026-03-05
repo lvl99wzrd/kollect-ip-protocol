@@ -98,6 +98,38 @@ pub fn validate_threshold(threshold: u8, controller_count: usize) -> Result<()> 
     Ok(())
 }
 
+/// Validates a controller list.
+///
+/// # Arguments
+/// * `controllers` - The list of controller pubkeys
+/// * `max_controllers` - Maximum allowed controllers
+///
+/// # Returns
+/// * `Ok(())` if valid
+/// * `Err(IpCoreError::EmptyControllerList)` if list is empty
+/// * `Err(IpCoreError::ControllerLimitExceeded)` if too many controllers
+/// * `Err(IpCoreError::DuplicateController)` if duplicates exist
+pub fn validate_controllers(controllers: &[Pubkey], max_controllers: usize) -> Result<()> {
+    if controllers.is_empty() {
+        return Err(IpCoreError::EmptyControllerList.into());
+    }
+
+    if controllers.len() > max_controllers {
+        return Err(IpCoreError::ControllerLimitExceeded.into());
+    }
+
+    // Check for duplicates using O(n^2) since max is 5
+    for i in 0..controllers.len() {
+        for j in (i + 1)..controllers.len() {
+            if controllers[i] == controllers[j] {
+                return Err(IpCoreError::DuplicateController.into());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

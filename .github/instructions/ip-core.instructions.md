@@ -402,7 +402,7 @@ For any mutation:
 
 ### update_entity_controllers
 
-- Add/remove controller.
+- Updates controllers with new list.
 - Must respect MAX_CONTROLLERS.
 - Must maintain valid threshold.
 - Updates updated_at.
