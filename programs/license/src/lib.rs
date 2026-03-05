@@ -8,7 +8,7 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("LicE6QjUgS6pYt6QdBcqXE7kD2kFXXWKH2Z7YYY2YYY");
+declare_id!("CG9nDkSt85FM3wbq4NpeQVp9BEyhdnZPRebdEWYy8GYo");
 
 #[program]
 pub mod license {

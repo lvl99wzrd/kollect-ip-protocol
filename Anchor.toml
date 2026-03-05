@@ -7,7 +7,11 @@ skip-lint = false
 
 [programs.localnet]
 ip_core = "3x8zi15UHjdD8CkqbBFX49SvcrDyh9gRfCZhDmnSBAZL"
-license = "LicE6QjUgS6pYt6QdBcqXE7kD2kFXXWKH2Z7YYY2YYY"
+license = "CG9nDkSt85FM3wbq4NpeQVp9BEyhdnZPRebdEWYy8GYo"
+
+[programs.devnet]
+ip_core = "3x8zi15UHjdD8CkqbBFX49SvcrDyh9gRfCZhDmnSBAZL"
+license = "CG9nDkSt85FM3wbq4NpeQVp9BEyhdnZPRebdEWYy8GYo"
 
 [registry]
 url = "https://api.apr.dev"
