@@ -8,7 +8,8 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { padBytes } from "./utils/helper";
+import * as path from "path";
+import { padBytes, hashFile } from "./utils/helper";
 
 describe("ip_core ip", () => {
   const provider = anchor.AnchorProvider.env();
@@ -24,8 +25,23 @@ describe("ip_core ip", () => {
   let payerTokenAccount: PublicKey;
   let entityPda: PublicKey;
 
-  const randomHash = (): number[] =>
-    Array.from(Keypair.generate().publicKey.toBytes());
+  // Test file paths for content hashing
+  const testFile1 = path.join(
+    __dirname,
+    "utils/file-examples/test-img-01.jpeg",
+  );
+  const testFile2 = path.join(
+    __dirname,
+    "utils/file-examples/test-img-02.jpeg",
+  );
+
+  // Generate unique hash by combining file hash with random salt
+  const uniqueHash = (): number[] => {
+    const fileHash = hashFile(testFile1);
+    const salt = Keypair.generate().publicKey.toBytes();
+    // XOR file hash with salt for uniqueness while maintaining deterministic base
+    return fileHash.map((byte, i) => byte ^ salt[i]);
+  };
 
   before(async () => {
     // Derive PDAs
@@ -138,7 +154,7 @@ describe("ip_core ip", () => {
 
   describe("create_ip", () => {
     it("creates an IP with payment", async () => {
-      const contentHash = randomHash();
+      const contentHash = uniqueHash();
 
       const [ipPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("ip"), entityPda.toBuffer(), Buffer.from(contentHash)],
@@ -175,7 +191,8 @@ describe("ip_core ip", () => {
     });
 
     it("derives deterministic PDA from entity and hash", async () => {
-      const contentHash = randomHash();
+      // Use actual file hash to prove determinism
+      const contentHash = hashFile(testFile2);
 
       const [ipPda1] = PublicKey.findProgramAddressSync(
         [Buffer.from("ip"), entityPda.toBuffer(), Buffer.from(contentHash)],
@@ -189,6 +206,119 @@ describe("ip_core ip", () => {
 
       expect(ipPda1.toString()).to.equal(ipPda2.toString());
     });
+
+    it("fails when same entity creates IP with same content hash", async () => {
+      // Create IP with a specific content hash
+      const contentHash = uniqueHash();
+
+      await program.methods
+        .createIp(contentHash)
+        .accounts({
+          registrantEntity: entityPda,
+          treasuryTokenAccount: treasuryTokenAccount,
+          payerTokenAccount: payerTokenAccount,
+        })
+        .remainingAccounts([
+          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+        ])
+        .rpc();
+
+      // Attempt to create another IP with the same content hash from same entity should fail
+      try {
+        await program.methods
+          .createIp(contentHash)
+          .accounts({
+            registrantEntity: entityPda,
+            treasuryTokenAccount: treasuryTokenAccount,
+            payerTokenAccount: payerTokenAccount,
+          })
+          .remainingAccounts([
+            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+          ])
+          .rpc();
+
+        expect.fail(
+          "Expected transaction to fail for duplicate content hash from same entity",
+        );
+      } catch (error: any) {
+        // The account already exists, so initialization should fail
+        expect(error.toString()).to.include("already in use");
+      }
+    });
+
+    it("allows different entity to create IP with same content hash", async () => {
+      // Create IP with entity A
+      const contentHash = uniqueHash();
+
+      await program.methods
+        .createIp(contentHash)
+        .accounts({
+          registrantEntity: entityPda,
+          treasuryTokenAccount: treasuryTokenAccount,
+          payerTokenAccount: payerTokenAccount,
+        })
+        .remainingAccounts([
+          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+        ])
+        .rpc();
+
+      // Create a different entity
+      const differentHandle = padBytes("different_ip", 32);
+      const [differentEntityPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("entity"),
+          creator.publicKey.toBuffer(),
+          Buffer.from(differentHandle),
+        ],
+        program.programId,
+      );
+
+      try {
+        await program.methods.createEntity(differentHandle, [], 1).rpc();
+      } catch {
+        // Already exists
+      }
+
+      // Different entity can create IP with the same content hash
+      const [ipPdaEntityA] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ip"), entityPda.toBuffer(), Buffer.from(contentHash)],
+        program.programId,
+      );
+
+      const [ipPdaEntityB] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("ip"),
+          differentEntityPda.toBuffer(),
+          Buffer.from(contentHash),
+        ],
+        program.programId,
+      );
+
+      // PDAs should be different for different entities with same content hash
+      expect(ipPdaEntityA.toString()).to.not.equal(ipPdaEntityB.toString());
+
+      // Create IP with different entity using same content hash - should succeed
+      await program.methods
+        .createIp(contentHash)
+        .accounts({
+          registrantEntity: differentEntityPda,
+          treasuryTokenAccount: treasuryTokenAccount,
+          payerTokenAccount: payerTokenAccount,
+        })
+        .remainingAccounts([
+          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+        ])
+        .rpc();
+
+      // Verify both IPs exist with same content hash but different registrants
+      const ipA = await program.account.ipAccount.fetch(ipPdaEntityA);
+      const ipB = await program.account.ipAccount.fetch(ipPdaEntityB);
+
+      expect(ipA.registrantEntity.toString()).to.equal(entityPda.toString());
+      expect(ipB.registrantEntity.toString()).to.equal(
+        differentEntityPda.toString(),
+      );
+    });
   });
 
   describe("transfer_ip", () => {
@@ -196,8 +326,8 @@ describe("ip_core ip", () => {
     let newOwnerEntityPda: PublicKey;
 
     before(async () => {
-      // Create IP
-      const contentHash = randomHash();
+      // Create IP with unique hash
+      const contentHash = uniqueHash();
       [ipPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("ip"), entityPda.toBuffer(), Buffer.from(contentHash)],
         program.programId,
