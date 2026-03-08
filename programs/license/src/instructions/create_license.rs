@@ -3,6 +3,7 @@ use ip_core::state::{Entity, IpAccount};
 
 use crate::constants::LICENSE_SEED;
 use crate::error::LicenseError;
+use crate::events::LicenseCreated;
 use crate::state::{License, LICENSE_SIZE};
 use crate::utils::validation::{extract_signer_keys, validate_multisig_keys};
 
@@ -101,6 +102,14 @@ pub fn handler(
     license.derivatives_allowed = derivatives_allowed;
     license.created_at = now;
     license.bump = ctx.bumps.license;
+
+    emit!(LicenseCreated {
+        license: ctx.accounts.license.key(),
+        origin_ip: origin_ip.key(),
+        authority: owner_entity.key(),
+        derivatives_allowed,
+        created_at: now,
+    });
 
     msg!("License created for IP: {:?}", origin_ip.key());
 

@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 
+use crate::events::ConfigInitialized;
 use crate::state::{ProtocolConfig, PROTOCOL_CONFIG_SIZE};
 use crate::utils::seeds::CONFIG_SEED;
 
@@ -48,6 +49,14 @@ pub fn handler(
     config.registration_currency = registration_currency;
     config.registration_fee = registration_fee;
     config.bump = ctx.bumps.config;
+
+    emit!(ConfigInitialized {
+        config: ctx.accounts.config.key(),
+        authority: ctx.accounts.authority.key(),
+        treasury,
+        registration_currency,
+        registration_fee,
+    });
 
     msg!("Protocol config initialized");
 

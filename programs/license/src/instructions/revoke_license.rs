@@ -3,6 +3,7 @@ use ip_core::state::Entity;
 
 use crate::constants::LICENSE_SEED;
 use crate::error::LicenseError;
+use crate::events::LicenseRevoked;
 use crate::state::License;
 use crate::utils::validation::{extract_signer_keys, validate_multisig_keys};
 
@@ -64,6 +65,14 @@ pub fn handler(ctx: Context<RevokeLicense>, ip_core_program_id: Pubkey) -> Resul
     // Note: In a production system, you may want to check that no active grants exist
     // before allowing license revocation. This would require iterating through grants
     // or maintaining a counter, which adds complexity.
+
+    // Emit event BEFORE the account is closed (close happens after handler returns)
+    emit!(LicenseRevoked {
+        license: ctx.accounts.license.key(),
+        origin_ip: ctx.accounts.license.origin_ip,
+        authority: authority_entity.key(),
+        rent_destination: ctx.accounts.rent_destination.key(),
+    });
 
     msg!("License revoked");
 

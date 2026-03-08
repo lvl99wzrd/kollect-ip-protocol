@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::IpCoreError;
+use crate::events::DerivativeLicenseUpdated;
 use crate::state::{DerivativeLink, Entity, IpAccount};
 use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{DERIVATIVE_SEED, ENTITY_SEED, IP_SEED};
@@ -135,9 +136,21 @@ pub fn handler(ctx: Context<UpdateDerivativeLicense>, license_program_id: Pubkey
         }
     }
 
-    // ONLY update license field (to the license grant)
     let link = &mut ctx.accounts.derivative_link;
+
+    // Capture old license before mutation
+    let old_license_grant = link.license;
+
+    // ONLY update license field (to the license grant)
     link.license = new_license_grant_info.key();
+
+    emit!(DerivativeLicenseUpdated {
+        derivative_link: link.key(),
+        child_ip: ctx.accounts.child_ip.key(),
+        old_license_grant,
+        new_license_grant: new_license_grant_info.key(),
+        authority: child_owner.key(),
+    });
 
     msg!("Derivative license updated");
 

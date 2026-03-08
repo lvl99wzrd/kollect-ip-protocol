@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::IpCoreError;
+use crate::events::DerivativeLinkCreated;
 use crate::state::{DerivativeLink, Entity, IpAccount, DERIVATIVE_LINK_SIZE};
 use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{DERIVATIVE_SEED, ENTITY_SEED, IP_SEED};
@@ -179,6 +180,15 @@ pub fn handler(ctx: Context<CreateDerivativeLink>, license_program_id: Pubkey) -
     link.license = license_grant_info.key();
     link.created_at = now;
     link.bump = ctx.bumps.derivative_link;
+
+    emit!(DerivativeLinkCreated {
+        derivative_link: ctx.accounts.derivative_link.key(),
+        parent_ip: parent_ip.key(),
+        child_ip: ctx.accounts.child_ip.key(),
+        license_grant: license_grant_info.key(),
+        child_owner_entity: child_owner.key(),
+        created_at: now,
+    });
 
     msg!("Derivative link created");
 

@@ -3,6 +3,7 @@ use ip_core::state::Entity;
 
 use crate::constants::{LICENSE_GRANT_SEED, LICENSE_SEED};
 use crate::error::LicenseError;
+use crate::events::LicenseGrantCreated;
 use crate::state::{License, LicenseGrant, LICENSE_GRANT_SIZE};
 use crate::utils::validation::{extract_signer_keys, validate_multisig_keys};
 
@@ -92,6 +93,14 @@ pub fn handler(
     grant.granted_at = now;
     grant.expiration = expiration;
     grant.bump = ctx.bumps.license_grant;
+
+    emit!(LicenseGrantCreated {
+        license_grant: ctx.accounts.license_grant.key(),
+        license: license.key(),
+        grantee: grantee_entity.key(),
+        expiration,
+        granted_at: now,
+    });
 
     msg!(
         "License grant created for grantee: {:?}, expiration: {}",

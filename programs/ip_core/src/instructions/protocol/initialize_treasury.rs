@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::IpCoreError;
+use crate::events::TreasuryInitialized;
 use crate::state::{ProtocolConfig, ProtocolTreasury, PROTOCOL_TREASURY_SIZE};
 use crate::utils::seeds::{CONFIG_SEED, TREASURY_SEED};
 
@@ -48,6 +49,12 @@ pub fn handler(ctx: Context<InitializeTreasury>) -> Result<()> {
     treasury.authority = ctx.accounts.authority.key();
     treasury.config = ctx.accounts.config.key();
     treasury.bump = ctx.bumps.treasury;
+
+    emit!(TreasuryInitialized {
+        treasury: ctx.accounts.treasury.key(),
+        authority: ctx.accounts.authority.key(),
+        config: ctx.accounts.config.key(),
+    });
 
     msg!("Protocol treasury initialized");
 

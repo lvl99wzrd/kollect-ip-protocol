@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{transfer, Token, TokenAccount, Transfer};
 
 use crate::error::IpCoreError;
+use crate::events::IpCreated;
 use crate::state::{Entity, IpAccount, ProtocolConfig, ProtocolTreasury, IP_ACCOUNT_SIZE};
 use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{CONFIG_SEED, ENTITY_SEED, IP_SEED, TREASURY_SEED};
@@ -121,6 +122,14 @@ pub fn handler(ctx: Context<CreateIp>, content_hash: [u8; 32]) -> Result<()> {
     ip.created_at = now;
     ip.updated_at = now;
     ip.bump = ctx.bumps.ip;
+
+    emit!(IpCreated {
+        ip: ctx.accounts.ip.key(),
+        content_hash,
+        registrant_entity: registrant_entity.key(),
+        registration_fee: config.registration_fee,
+        created_at: now,
+    });
 
     msg!("IP registered");
 

@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::{MAX_CID_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
+use crate::events::MetadataSchemaCreated;
 use crate::state::{MetadataSchema, METADATA_SCHEMA_SIZE};
 use crate::utils::seeds::METADATA_SCHEMA_SEED;
 use crate::utils::validation::validate_cid_not_empty;
@@ -65,6 +66,16 @@ pub fn handler(
     schema.creator = ctx.accounts.creator.key();
     schema.created_at = now;
     schema.bump = ctx.bumps.metadata_schema;
+
+    emit!(MetadataSchemaCreated {
+        schema: ctx.accounts.metadata_schema.key(),
+        schema_id: id,
+        version,
+        hash,
+        cid,
+        creator: ctx.accounts.creator.key(),
+        created_at: now,
+    });
 
     msg!("Metadata schema created");
 

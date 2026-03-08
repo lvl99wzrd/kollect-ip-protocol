@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::constants::MAX_CID_LENGTH;
 use crate::error::IpCoreError;
+use crate::events::IpMetadataCreated;
 use crate::state::{
     Entity, IpAccount, MetadataAccount, MetadataParentType, MetadataSchema, METADATA_ACCOUNT_SIZE,
 };
@@ -117,6 +118,17 @@ pub fn handler(
     // Increment IP's metadata revision
     ip.current_metadata_revision = revision;
     ip.updated_at = now;
+
+    emit!(IpMetadataCreated {
+        metadata: ctx.accounts.metadata.key(),
+        ip: ip.key(),
+        owner_entity: owner_entity.key(),
+        schema: ctx.accounts.schema.key(),
+        revision,
+        hash,
+        cid,
+        created_at: now,
+    });
 
     msg!("IP metadata created (revision {})", revision);
 

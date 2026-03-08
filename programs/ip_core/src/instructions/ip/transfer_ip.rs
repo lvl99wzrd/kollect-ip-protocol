@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::IpCoreError;
+use crate::events::IpTransferred;
 use crate::state::{Entity, IpAccount};
 use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{ENTITY_SEED, IP_SEED};
@@ -63,6 +64,13 @@ pub fn handler(ctx: Context<TransferIp>) -> Result<()> {
 
     // ONLY update current_owner_entity - all other fields remain immutable
     ip.current_owner_entity = new_owner.key();
+
+    emit!(IpTransferred {
+        ip: ip.key(),
+        from_entity: current_owner.key(),
+        to_entity: new_owner.key(),
+        authority: current_owner.key(),
+    });
 
     msg!(
         "IP transferred from {} to {}",

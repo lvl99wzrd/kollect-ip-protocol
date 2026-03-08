@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::constants::MAX_CID_LENGTH;
 use crate::error::IpCoreError;
+use crate::events::EntityMetadataCreated;
 use crate::state::{
     Entity, MetadataAccount, MetadataParentType, MetadataSchema, METADATA_ACCOUNT_SIZE,
 };
@@ -107,6 +108,17 @@ pub fn handler(
     // Increment entity's metadata revision
     entity.current_metadata_revision = revision;
     entity.updated_at = now;
+
+    emit!(EntityMetadataCreated {
+        metadata: ctx.accounts.metadata.key(),
+        entity: entity.key(),
+        authority: entity.key(),
+        schema: ctx.accounts.schema.key(),
+        revision,
+        hash,
+        cid,
+        created_at: now,
+    });
 
     msg!("Entity metadata created (revision {})", revision);
 

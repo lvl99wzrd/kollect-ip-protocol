@@ -3,6 +3,7 @@ use ip_core::state::Entity;
 
 use crate::constants::{LICENSE_GRANT_SEED, LICENSE_SEED};
 use crate::error::LicenseError;
+use crate::events::LicenseGrantRevoked;
 use crate::state::{License, LicenseGrant};
 use crate::utils::validation::{extract_signer_keys, validate_multisig_keys};
 
@@ -68,6 +69,15 @@ pub fn handler(ctx: Context<RevokeLicenseGrant>, ip_core_program_id: Pubkey) -> 
         &authority_entity.controllers,
         authority_entity.signature_threshold,
     )?;
+
+    // Emit event BEFORE the account is closed (close happens after handler returns)
+    emit!(LicenseGrantRevoked {
+        license_grant: ctx.accounts.license_grant.key(),
+        license: ctx.accounts.license.key(),
+        grantee: ctx.accounts.license_grant.grantee,
+        authority: authority_entity.key(),
+        rent_destination: ctx.accounts.rent_destination.key(),
+    });
 
     msg!(
         "License grant revoked for grantee: {:?}",

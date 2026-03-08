@@ -3,6 +3,7 @@ use ip_core::state::Entity;
 
 use crate::constants::LICENSE_SEED;
 use crate::error::LicenseError;
+use crate::events::LicenseUpdated;
 use crate::state::License;
 use crate::utils::validation::{extract_signer_keys, validate_multisig_keys};
 
@@ -61,7 +62,16 @@ pub fn handler(
 
     // Update license (only derivatives_allowed is mutable)
     let license = &mut ctx.accounts.license;
+    let old_derivatives_allowed = license.derivatives_allowed;
     license.derivatives_allowed = derivatives_allowed;
+
+    emit!(LicenseUpdated {
+        license: license.key(),
+        origin_ip: license.origin_ip,
+        authority: authority_entity.key(),
+        old_derivatives_allowed,
+        new_derivatives_allowed: derivatives_allowed,
+    });
 
     msg!(
         "License updated: derivatives_allowed = {}",

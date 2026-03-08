@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::error::IpCoreError;
+use crate::events::ConfigUpdated;
 use crate::state::ProtocolConfig;
 use crate::utils::seeds::CONFIG_SEED;
 
@@ -46,6 +47,7 @@ pub struct UpdateConfigParams {
 /// * `IpCoreError::InvalidAuthority` - Signer is not the current authority
 pub fn handler(ctx: Context<UpdateConfig>, params: UpdateConfigParams) -> Result<()> {
     let config = &mut ctx.accounts.config;
+    let authority = ctx.accounts.authority.key();
 
     if let Some(new_authority) = params.new_authority {
         config.authority = new_authority;
@@ -62,6 +64,15 @@ pub fn handler(ctx: Context<UpdateConfig>, params: UpdateConfigParams) -> Result
     if let Some(new_registration_fee) = params.new_registration_fee {
         config.registration_fee = new_registration_fee;
     }
+
+    emit!(ConfigUpdated {
+        config: config.key(),
+        authority,
+        new_authority: params.new_authority,
+        new_treasury: params.new_treasury,
+        new_registration_currency: params.new_registration_currency,
+        new_registration_fee: params.new_registration_fee,
+    });
 
     msg!("Protocol config updated");
 

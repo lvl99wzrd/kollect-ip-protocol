@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::constants::MAX_CONTROLLERS;
+use crate::events::EntityControllersUpdated;
 use crate::state::Entity;
 use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::ENTITY_SEED;
@@ -47,11 +48,19 @@ pub fn handler(
         entity.signature_threshold,
     )?;
 
+    // Capture old values before mutation
+    let old_controller_count = entity.controllers.len() as u8;
+    let old_threshold = entity.signature_threshold;
+    let entity_key = entity.key();
+
     // Validate the new controller list
     validate_controllers(&new_controllers, MAX_CONTROLLERS)?;
 
     // Validate threshold against new controller count
     validate_threshold(new_threshold, new_controllers.len())?;
+
+    // Capture new controller count before move
+    let new_controller_count = new_controllers.len() as u8;
 
     // Replace controllers and threshold
     entity.controllers = new_controllers;
@@ -60,6 +69,16 @@ pub fn handler(
     // Update timestamp
     let clock = Clock::get()?;
     entity.updated_at = clock.unix_timestamp;
+
+    emit!(EntityControllersUpdated {
+        entity: entity_key,
+        authority: entity_key,
+        old_controller_count,
+        new_controller_count,
+        old_threshold,
+        new_threshold,
+        updated_at: entity.updated_at,
+    });
 
     msg!("Entity controllers updated");
 

@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::constants::{MAX_CONTROLLERS, MAX_HANDLE_LENGTH};
 use crate::error::IpCoreError;
+use crate::events::EntityCreated;
 use crate::state::{Entity, ENTITY_SIZE};
 use crate::utils::seeds::ENTITY_SEED;
 use crate::utils::validation::{validate_handle, validate_threshold};
@@ -68,9 +69,14 @@ pub fn handler(
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
+    // Capture values needed for event before mutable borrow
+    let entity_key = ctx.accounts.entity.key();
+    let creator_key = ctx.accounts.creator.key();
+    let controller_count = controllers.len() as u8;
+
     // Initialize entity
     let entity = &mut ctx.accounts.entity;
-    entity.creator = ctx.accounts.creator.key();
+    entity.creator = creator_key;
     entity.handle = handle;
     entity.controllers = controllers;
     entity.signature_threshold = signature_threshold;
@@ -78,6 +84,15 @@ pub fn handler(
     entity.created_at = now;
     entity.updated_at = now;
     entity.bump = ctx.bumps.entity;
+
+    emit!(EntityCreated {
+        entity: entity_key,
+        creator: creator_key,
+        handle,
+        controller_count,
+        signature_threshold,
+        created_at: now,
+    });
 
     msg!("Entity created");
 

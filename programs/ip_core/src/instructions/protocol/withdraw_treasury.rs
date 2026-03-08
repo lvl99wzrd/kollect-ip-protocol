@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{transfer, Token, TokenAccount, Transfer};
 
 use crate::error::IpCoreError;
+use crate::events::TreasuryWithdrawal;
 use crate::state::ProtocolTreasury;
 use crate::utils::seeds::TREASURY_SEED;
 
@@ -63,6 +64,14 @@ pub fn handler(ctx: Context<WithdrawTreasury>, amount: u64) -> Result<()> {
         ),
         amount,
     )?;
+
+    emit!(TreasuryWithdrawal {
+        treasury: ctx.accounts.treasury.key(),
+        authority: ctx.accounts.authority.key(),
+        destination: ctx.accounts.destination_token_account.key(),
+        mint: ctx.accounts.treasury_token_account.mint,
+        amount,
+    });
 
     msg!("Withdrawn {} tokens from treasury", amount);
 
