@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { IpCore } from "../target/types/ip_core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
-import { padBytes } from "./utils/helper";
+import { padBytes } from "../utils/helper";
 
 describe("ip_core entity", () => {
   const provider = anchor.AnchorProvider.env();

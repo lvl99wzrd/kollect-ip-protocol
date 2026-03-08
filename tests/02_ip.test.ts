@@ -9,7 +9,7 @@ import {
 } from "@solana/spl-token";
 import { expect } from "chai";
 import * as path from "path";
-import { padBytes, hashFile } from "./utils/helper";
+import { padBytes, hashFile } from "../utils/helper";
 
 describe("ip_core ip", () => {
   const provider = anchor.AnchorProvider.env();

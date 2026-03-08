@@ -9,7 +9,7 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { padBytes } from "./utils/helper";
+import { padBytes } from "../utils/helper";
 
 describe("license", () => {
   const provider = anchor.AnchorProvider.env();

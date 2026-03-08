@@ -4,9 +4,9 @@ import { IpCore } from "../target/types/ip_core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
 import * as crypto from "crypto";
-import entitySchemaJson from "./utils/metadata-schema/entity.metadata.v1.json";
-import ipSchemaJson from "./utils/metadata-schema/ip.metadata.v1.json";
-import { padBytes } from "./utils/helper";
+import entitySchemaJson from "../utils/metadata-schema/entity.metadata.v1.json";
+import ipSchemaJson from "../utils/metadata-schema/ip.metadata.v1.json";
+import { padBytes } from "../utils/helper";
 
 describe("ip_core metadata", () => {
   const provider = anchor.AnchorProvider.env();
