@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
 import { IpCore } from "../target/types/ip_core";
-import { Keypair, PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import {
   createMint,
   getOrCreateAssociatedTokenAccount,
@@ -357,6 +357,210 @@ describe("ip_core metadata", () => {
       } catch (err) {
         expect(err.toString()).to.include("EmptyCid");
       }
+    });
+  });
+
+  describe("combined transaction: create + metadata in one tx", () => {
+    let schemaPda: PublicKey;
+
+    before(async () => {
+      // Reuse ipSchemaJson schema already on-chain from earlier tests
+      const schemaId = padBytes(ipSchemaJson.schema.schema_id, 32);
+      const version = padBytes(ipSchemaJson.schema.version, 16);
+      [schemaPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata_schema"),
+          Buffer.from(schemaId),
+          Buffer.from(version),
+        ],
+        program.programId,
+      );
+    });
+
+    it("creates entity + entity metadata in one transaction", async () => {
+      const handle = padBytes("combo_entity", 32);
+      const metadataHash = randomHash();
+      const metadataCid = padBytes("QmComboEntityMeta", 96);
+
+      // Derive entity PDA
+      const [entityPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("entity"),
+          creator.publicKey.toBuffer(),
+          Buffer.from(handle),
+        ],
+        program.programId,
+      );
+
+      // Entity starts with current_metadata_revision = 0,
+      // so first metadata revision = 1
+      const revisionBytes = new anchor.BN(1).toArrayLike(Buffer, "le", 8);
+      const [metadataPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          Buffer.from("entity"),
+          entityPda.toBuffer(),
+          revisionBytes,
+        ],
+        program.programId,
+      );
+
+      // Build both instructions
+      const createEntityIx = await program.methods
+        .createEntity(handle, [], 1)
+        .instruction();
+
+      const createMetadataIx = await program.methods
+        .createEntityMetadata(metadataHash, metadataCid)
+        .accounts({
+          metadata: metadataPda,
+          entity: entityPda,
+          schema: schemaPda,
+        })
+        .remainingAccounts([
+          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+        ])
+        .instruction();
+
+      // Send as a single transaction
+      const tx = new Transaction().add(createEntityIx, createMetadataIx);
+      await provider.sendAndConfirm(tx);
+
+      // Verify entity was created
+      const entity = await program.account.entity.fetch(entityPda);
+      expect(entity.currentMetadataRevision.toNumber()).to.equal(1);
+
+      // Verify metadata was created
+      const metadata = await program.account.metadataAccount.fetch(metadataPda);
+      expect(metadata.revision.toNumber()).to.equal(1);
+      expect(metadata.parent.toString()).to.equal(entityPda.toString());
+      expect(metadata.schema.toString()).to.equal(schemaPda.toString());
+    });
+
+    it("creates IP + IP metadata in one transaction", async () => {
+      // --- token infrastructure (idempotent) ---
+      const [configPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("config")],
+        program.programId,
+      );
+      const [treasuryPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("treasury")],
+        program.programId,
+      );
+
+      const existingConfig = await program.account.protocolConfig.fetch(
+        configPda,
+      );
+      const mint = existingConfig.registrationCurrency;
+
+      const treasuryAta = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        creator.payer,
+        mint,
+        treasuryPda,
+        true,
+      );
+
+      const payerAta = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        creator.payer,
+        mint,
+        creator.publicKey,
+      );
+
+      // Ensure payer has funds
+      const balance = await provider.connection.getTokenAccountBalance(
+        payerAta.address,
+      );
+      if (balance.value.uiAmount === null || balance.value.uiAmount < 10) {
+        await mintTo(
+          provider.connection,
+          creator.payer,
+          mint,
+          payerAta.address,
+          creator.publicKey,
+          100_000_000,
+        );
+      }
+
+      // --- entity (reuse or create) ---
+      const handle = padBytes("combo_ip_entity", 32);
+      const [entityPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("entity"),
+          creator.publicKey.toBuffer(),
+          Buffer.from(handle),
+        ],
+        program.programId,
+      );
+
+      try {
+        await program.methods.createEntity(handle, [], 1).rpc();
+      } catch {
+        // already exists
+      }
+
+      // --- Build IP + IP metadata in 1 tx ---
+      const contentHash = Array.from(Keypair.generate().publicKey.toBytes());
+      const [ipPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ip"), entityPda.toBuffer(), Buffer.from(contentHash)],
+        program.programId,
+      );
+
+      // IP starts with current_metadata_revision = 0,
+      // so first metadata revision = 1
+      const revisionBytes = new anchor.BN(1).toArrayLike(Buffer, "le", 8);
+      const [metadataPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          Buffer.from("ip"),
+          ipPda.toBuffer(),
+          revisionBytes,
+        ],
+        program.programId,
+      );
+
+      const metadataHash = randomHash();
+      const metadataCid = padBytes("QmComboIpMeta", 96);
+
+      const createIpIx = await program.methods
+        .createIp(contentHash)
+        .accounts({
+          registrantEntity: entityPda,
+          treasuryTokenAccount: treasuryAta.address,
+          payerTokenAccount: payerAta.address,
+        })
+        .remainingAccounts([
+          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+        ])
+        .instruction();
+
+      const createIpMetadataIx = await program.methods
+        .createIpMetadata(metadataHash, metadataCid)
+        .accounts({
+          metadata: metadataPda,
+          ip: ipPda,
+          ownerEntity: entityPda,
+          schema: schemaPda,
+        })
+        .remainingAccounts([
+          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
+        ])
+        .instruction();
+
+      // Send as a single transaction
+      const tx = new Transaction().add(createIpIx, createIpMetadataIx);
+      await provider.sendAndConfirm(tx);
+
+      // Verify IP was created
+      const ip = await program.account.ipAccount.fetch(ipPda);
+      expect(ip.currentMetadataRevision.toNumber()).to.equal(1);
+
+      // Verify metadata was created
+      const metadata = await program.account.metadataAccount.fetch(metadataPda);
+      expect(metadata.revision.toNumber()).to.equal(1);
+      expect(metadata.parent.toString()).to.equal(ipPda.toString());
+      expect(metadata.schema.toString()).to.equal(schemaPda.toString());
     });
   });
 });
