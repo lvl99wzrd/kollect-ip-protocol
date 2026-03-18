@@ -3,24 +3,17 @@ use ip_core::state::entity::Entity;
 
 use crate::error::KollectError;
 
-/// Validate that enough signers from the entity's controllers meet the threshold.
-/// `remaining_accounts` should include the signer accounts passed by the caller.
-pub fn validate_entity_multisig(entity: &Entity, remaining_accounts: &[AccountInfo]) -> Result<()> {
-    let signer_keys: Vec<Pubkey> = remaining_accounts
+/// Validate that the entity's controller has signed the transaction.
+/// `remaining_accounts` should include the controller signer account.
+pub fn validate_entity_controller(
+    entity: &Entity,
+    remaining_accounts: &[AccountInfo],
+) -> Result<()> {
+    let is_signed = remaining_accounts
         .iter()
-        .filter(|a| a.is_signer)
-        .map(|a| a.key())
-        .collect();
+        .any(|a| a.is_signer && a.key() == entity.controller);
 
-    let valid_count = signer_keys
-        .iter()
-        .filter(|k| entity.controllers.contains(k))
-        .count();
-
-    require!(
-        valid_count >= entity.signature_threshold as usize,
-        KollectError::InsufficientSignatures
-    );
+    require!(is_signed, KollectError::InsufficientSignatures);
 
     Ok(())
 }

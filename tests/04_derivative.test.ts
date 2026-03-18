@@ -218,7 +218,7 @@ describe("ip_core derivative with kollect license", () => {
     );
 
     try {
-      await ipCoreProgram.methods.createEntity(handle, [], 1).rpc();
+      await ipCoreProgram.methods.createEntity(handle).rpc();
     } catch {
       // Already created
     }
@@ -234,10 +234,10 @@ describe("ip_core derivative with kollect license", () => {
       .createIp(parentHash)
       .accounts({
         registrantEntity: entityPda,
+        controller: creator.publicKey,
         treasuryTokenAccount,
         payerTokenAccount,
       })
-      .remainingAccounts([signerMeta(creator.publicKey)])
       .rpc();
 
     // Create child IP
@@ -251,10 +251,10 @@ describe("ip_core derivative with kollect license", () => {
       .createIp(childHash)
       .accounts({
         registrantEntity: entityPda,
+        controller: creator.publicKey,
         treasuryTokenAccount,
         payerTokenAccount,
       })
-      .remainingAccounts([signerMeta(creator.publicKey)])
       .rpc();
 
     // ── kollect setup ────────────────────────────────────────────────────
@@ -384,10 +384,10 @@ describe("ip_core derivative with kollect license", () => {
           parentIp: parentIpPda,
           childIp: childIpPda,
           childOwnerEntity: entityPda,
+          controller: creator.publicKey,
           licenseGrant: licenseGrantPda,
           license: licensePda,
         })
-        .remainingAccounts([signerMeta(creator.publicKey)])
         .rpc();
 
       const derivativeLink = await ipCoreProgram.account.derivativeLink.fetch(
@@ -410,10 +410,10 @@ describe("ip_core derivative with kollect license", () => {
             parentIp: parentIpPda,
             childIp: childIpPda,
             childOwnerEntity: entityPda,
+            controller: creator.publicKey,
             licenseGrant: licenseGrantPda,
             license: licensePda,
           })
-          .remainingAccounts([signerMeta(creator.publicKey)])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -422,7 +422,7 @@ describe("ip_core derivative with kollect license", () => {
       }
     });
 
-    it("fails without multisig approval", async () => {
+    it("fails without controller signature", async () => {
       // Create a new child IP to get a fresh derivative link PDA
       const newChildHash = randomHash();
       const [newChildIpPda] = PublicKey.findProgramAddressSync(
@@ -434,12 +434,13 @@ describe("ip_core derivative with kollect license", () => {
         .createIp(newChildHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount,
           payerTokenAccount,
         })
-        .remainingAccounts([signerMeta(creator.publicKey)])
         .rpc();
 
+      const fakeController = Keypair.generate();
       try {
         await ipCoreProgram.methods
           .createDerivativeLink(kollectProgram.programId)
@@ -447,14 +448,15 @@ describe("ip_core derivative with kollect license", () => {
             parentIp: parentIpPda,
             childIp: newChildIpPda,
             childOwnerEntity: entityPda,
+            controller: fakeController.publicKey,
             licenseGrant: licenseGrantPda,
             license: licensePda,
           })
-          .remainingAccounts([]) // No signers!
+          .signers([fakeController])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
-        expect(err.toString()).to.include("InsufficientSignatures");
+        expect(err.toString()).to.include("Unauthorized");
       }
     });
 
@@ -470,10 +472,10 @@ describe("ip_core derivative with kollect license", () => {
         .createIp(newChildHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount,
           payerTokenAccount,
         })
-        .remainingAccounts([signerMeta(creator.publicKey)])
         .rpc();
 
       // Use a fake license program ID — accounts are owned by kollect, not this
@@ -486,10 +488,10 @@ describe("ip_core derivative with kollect license", () => {
             parentIp: parentIpPda,
             childIp: newChildIpPda,
             childOwnerEntity: entityPda,
+            controller: creator.publicKey,
             licenseGrant: licenseGrantPda,
             license: licensePda,
           })
-          .remainingAccounts([signerMeta(creator.publicKey)])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -509,10 +511,10 @@ describe("ip_core derivative with kollect license", () => {
         .createIp(expParentHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount,
           payerTokenAccount,
         })
-        .remainingAccounts([signerMeta(creator.publicKey)])
         .rpc();
 
       // Create child IP
@@ -526,10 +528,10 @@ describe("ip_core derivative with kollect license", () => {
         .createIp(expChildHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount,
           payerTokenAccount,
         })
-        .remainingAccounts([signerMeta(creator.publicKey)])
         .rpc();
 
       // Onboard and create a license template with grant_duration = 1 second
@@ -550,10 +552,10 @@ describe("ip_core derivative with kollect license", () => {
             parentIp: expParentIpPda,
             childIp: expChildIpPda,
             childOwnerEntity: entityPda,
+            controller: creator.publicKey,
             licenseGrant: expResult.licenseGrantPda,
             license: expResult.licensePda,
           })
-          .remainingAccounts([signerMeta(creator.publicKey)])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {

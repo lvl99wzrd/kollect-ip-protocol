@@ -5,7 +5,7 @@ use crate::error::KollectError;
 use crate::events::IpConfigUpdated;
 use crate::state::IpConfig;
 use crate::utils::seeds::IP_CONFIG_SEED;
-use crate::utils::validation::validate_entity_multisig;
+use crate::utils::validation::validate_entity_controller;
 
 #[derive(Accounts)]
 pub struct UpdateIpConfig<'info> {
@@ -22,7 +22,7 @@ pub struct UpdateIpConfig<'info> {
         constraint = ip_config.is_active @ KollectError::IpNotActive,
     )]
     pub ip_config: Account<'info, IpConfig>,
-    // remaining_accounts: entity controller signers
+    // remaining_accounts: entity controller signer
 }
 
 pub fn handler(
@@ -30,7 +30,7 @@ pub fn handler(
     new_price_per_play_override: Option<Option<u64>>,
 ) -> Result<()> {
     let entity = &ctx.accounts.entity;
-    validate_entity_multisig(entity, ctx.remaining_accounts)?;
+    validate_entity_controller(entity, ctx.remaining_accounts)?;
 
     let ip_config = &mut ctx.accounts.ip_config;
     let clock = Clock::get()?;

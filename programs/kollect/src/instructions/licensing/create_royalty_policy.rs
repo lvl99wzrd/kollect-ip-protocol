@@ -5,7 +5,7 @@ use crate::error::KollectError;
 use crate::events::RoyaltyPolicyCreated;
 use crate::state::{IpConfig, LicenseTemplate, RoyaltyPolicy};
 use crate::utils::seeds::{IP_CONFIG_SEED, LICENSE_TEMPLATE_SEED, ROYALTY_POLICY_SEED};
-use crate::utils::validation::validate_entity_multisig;
+use crate::utils::validation::validate_entity_controller;
 
 #[derive(Accounts)]
 pub struct CreateRoyaltyPolicy<'info> {
@@ -41,7 +41,7 @@ pub struct CreateRoyaltyPolicy<'info> {
     pub royalty_policy: Account<'info, RoyaltyPolicy>,
 
     pub system_program: Program<'info, System>,
-    // remaining_accounts: entity controller signers
+    // remaining_accounts: entity controller signer
 }
 
 pub fn handler(
@@ -54,7 +54,7 @@ pub fn handler(
     commercial_use: bool,
 ) -> Result<()> {
     let entity = &ctx.accounts.entity;
-    validate_entity_multisig(entity, ctx.remaining_accounts)?;
+    validate_entity_controller(entity, ctx.remaining_accounts)?;
 
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;

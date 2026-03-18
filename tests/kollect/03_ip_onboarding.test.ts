@@ -174,51 +174,26 @@ describe("kollect ip onboarding", () => {
       }
     });
 
-    it("fails with insufficient multisig signatures", async () => {
-      const controller2 = Keypair.generate();
-      const multisigEntity = await createTestEntity(
-        "multi_ip_onboard",
-        [controller2.publicKey],
-        2,
-      );
-      const multisigTreasuryPda = deriveEntityTreasuryPda(
-        multisigEntity.entityPda,
-        kollect.programId,
-      );
-
-      // Fund controller2 for signing
+    it("fails with non-controller signer", async () => {
+      const fakeController = Keypair.generate();
       const sig = await provider.connection.requestAirdrop(
-        controller2.publicKey,
+        fakeController.publicKey,
         1_000_000_000,
       );
       await provider.connection.confirmTransaction(sig);
 
-      // Init entity treasury with both signers
-      try {
-        await kollect.account.entityTreasury.fetch(multisigTreasuryPda);
-      } catch {
-        await kollect.methods
-          .initializeEntityTreasury(authority.publicKey)
-          .accounts({ entity: multisigEntity.entityPda })
-          .remainingAccounts([
-            signerMeta(authority.publicKey),
-            signerMeta(controller2.publicKey),
-          ])
-          .signers([controller2])
-          .rpc();
-      }
-
-      const ip = await createTestIp(multisigEntity.entityPda, [controller2]);
+      const ip = await createTestIp(entityPda);
 
       try {
-        // Only 1 signer for threshold=2
+        // Pass a non-controller signer
         await kollect.methods
           .onboardIp(null, false)
           .accounts({
-            entity: multisigEntity.entityPda,
+            entity: entityPda,
             ipAccount: ip.ipPda,
           })
-          .remainingAccounts([signerMeta(authority.publicKey)])
+          .remainingAccounts([signerMeta(fakeController.publicKey)])
+          .signers([fakeController])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {

@@ -6,7 +6,6 @@ use crate::events::IpMetadataCreated;
 use crate::state::{
     Entity, IpAccount, MetadataAccount, MetadataParentType, MetadataSchema, METADATA_ACCOUNT_SIZE,
 };
-use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{ENTITY_SEED, IP_SEED, METADATA_SEED};
 use crate::utils::validation::validate_cid_not_empty;
 
@@ -47,13 +46,18 @@ pub struct CreateIpMetadata<'info> {
     /// The metadata schema this metadata conforms to.
     pub schema: Account<'info, MetadataSchema>,
 
+    /// The owner entity controller (must sign).
+    #[account(
+        constraint = controller.key() == owner_entity.controller @ IpCoreError::Unauthorized
+    )]
+    pub controller: Signer<'info>,
+
     /// Payer for account creation.
     #[account(mut)]
     pub payer: Signer<'info>,
 
     /// System program for account creation.
     pub system_program: Program<'info, System>,
-    // Remaining accounts are signers (owner entity controllers)
 }
 
 /// Create metadata for an IP.
@@ -64,7 +68,7 @@ pub struct CreateIpMetadata<'info> {
 /// * `cid` - IPFS CID pointing to the metadata content
 ///
 /// # Errors
-/// * `IpCoreError::InsufficientSignatures` - Multisig threshold not met
+/// * `IpCoreError::Unauthorized` - Signer is not the owner entity controller
 /// * `IpCoreError::InvalidOwnership` - Signer is not the current owner
 /// * `IpCoreError::EmptyCid` - CID is empty
 pub fn handler(
@@ -74,14 +78,6 @@ pub fn handler(
 ) -> Result<()> {
     let ip = &mut ctx.accounts.ip;
     let owner_entity = &ctx.accounts.owner_entity;
-
-    // Validate multisig
-    let signer_keys = extract_signer_keys(ctx.remaining_accounts);
-    validate_multisig_keys(
-        &signer_keys,
-        &owner_entity.controllers,
-        owner_entity.signature_threshold,
-    )?;
 
     // Auto-increment revision
     let new_revision = ip

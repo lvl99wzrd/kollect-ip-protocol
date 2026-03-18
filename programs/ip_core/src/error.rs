@@ -19,22 +19,6 @@ pub enum IpCoreError {
     #[msg("Invalid authority provided")]
     InvalidAuthority,
 
-    /// The signature threshold is invalid (must be 1 <= threshold <= controllers.len()).
-    #[msg("Invalid threshold: must be between 1 and number of controllers")]
-    InvalidThreshold,
-
-    /// Cannot add more controllers, maximum limit reached.
-    #[msg("Controller limit exceeded: maximum is 5 controllers")]
-    ControllerLimitExceeded,
-
-    /// The specified controller was not found in the controller list.
-    #[msg("Controller not found in the controller list")]
-    ControllerNotFound,
-
-    /// Not enough valid signatures to meet the threshold.
-    #[msg("Insufficient signatures: threshold not met")]
-    InsufficientSignatures,
-
     /// The entity account has not been initialized.
     #[msg("Entity has not been initialized")]
     EntityNotInitialized,
@@ -83,10 +67,6 @@ pub enum IpCoreError {
     #[msg("Handle cannot be empty")]
     EmptyHandle,
 
-    /// Cannot remove the last controller from an entity.
-    #[msg("Cannot remove the last controller: entity must have at least one controller")]
-    CannotRemoveLastController,
-
     /// Invalid license: not owned by license program.
     #[msg("Invalid license: account not owned by license program")]
     InvalidLicenseOwner,
@@ -118,12 +98,4 @@ pub enum IpCoreError {
     /// Grantee does not match the child owner entity.
     #[msg("Grantee does not match the child owner entity")]
     InvalidGrantee,
-
-    /// Duplicate controller in the controller list.
-    #[msg("Duplicate controller: each controller must be unique")]
-    DuplicateController,
-
-    /// Controller list cannot be empty.
-    #[msg("Controller list cannot be empty: entity must have at least one controller")]
-    EmptyControllerList,
 }

@@ -78,27 +78,25 @@ describe("kollect entity treasury", () => {
       }
     });
 
-    it("fails with insufficient multisig signatures", async () => {
-      // Create a multisig entity (threshold=2, 2 controllers)
-      const controller2 = Keypair.generate();
-      const multisigEntity = await createTestEntity(
-        "multi_treasury_test",
-        [controller2.publicKey],
-        2,
-      );
-      const multisigTreasuryPda = deriveEntityTreasuryPda(
-        multisigEntity.entityPda,
+    it("fails with non-controller signer", async () => {
+      // Create a new entity
+      const testEntity = await createTestEntity("ctrl_treasury_test");
+      const testTreasuryPda = deriveEntityTreasuryPda(
+        testEntity.entityPda,
         kollect.programId,
       );
 
+      const fakeController = Keypair.generate();
+
       try {
-        // Only pass 1 signer when threshold is 2
+        // Pass a non-controller signer
         await kollect.methods
           .initializeEntityTreasury(authority.publicKey)
           .accounts({
-            entity: multisigEntity.entityPda,
+            entity: testEntity.entityPda,
           })
-          .remainingAccounts([signerMeta(authority.publicKey)])
+          .remainingAccounts([signerMeta(fakeController.publicKey)])
+          .signers([fakeController])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {

@@ -9,7 +9,7 @@ use crate::utils::seeds::{
     LICENSE_GRANT_SEED, LICENSE_SEED, LICENSE_TEMPLATE_SEED, PLATFORM_CONFIG_SEED,
     PLATFORM_TREASURY_SEED,
 };
-use crate::utils::validation::{calculate_bps, validate_entity_multisig};
+use crate::utils::validation::{calculate_bps, validate_entity_controller};
 
 #[derive(Accounts)]
 pub struct PurchaseLicense<'info> {
@@ -84,12 +84,12 @@ pub struct PurchaseLicense<'info> {
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
-    // remaining_accounts: grantee entity controller signers
+    // remaining_accounts: grantee entity controller signer
 }
 
 pub fn handler(ctx: Context<PurchaseLicense>) -> Result<()> {
     let grantee_entity = &ctx.accounts.grantee_entity;
-    validate_entity_multisig(grantee_entity, ctx.remaining_accounts)?;
+    validate_entity_controller(grantee_entity, ctx.remaining_accounts)?;
 
     let template = &ctx.accounts.license_template;
 

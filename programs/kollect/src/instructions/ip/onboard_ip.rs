@@ -9,7 +9,7 @@ use crate::state::{
 use crate::utils::seeds::{
     ENTITY_TREASURY_SEED, IP_CONFIG_SEED, IP_TREASURY_SEED, ROYALTY_SPLIT_SEED,
 };
-use crate::utils::validation::validate_entity_multisig;
+use crate::utils::validation::validate_entity_controller;
 
 #[derive(Accounts)]
 pub struct OnboardIp<'info> {
@@ -54,7 +54,7 @@ pub struct OnboardIp<'info> {
     pub entity_treasury: Account<'info, EntityTreasury>,
 
     pub system_program: Program<'info, System>,
-    // remaining_accounts: entity controller signers
+    // remaining_accounts: entity controller signer
 }
 
 /// Accounts needed only when onboarding a derivative IP (optional).
@@ -79,7 +79,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
     is_derivative: bool,
 ) -> Result<()> {
     let entity = &ctx.accounts.entity;
-    validate_entity_multisig(entity, ctx.remaining_accounts)?;
+    validate_entity_controller(entity, ctx.remaining_accounts)?;
 
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
@@ -129,14 +129,12 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
     ctx: &Context<'a, 'b, 'c, 'info, OnboardIp<'info>>,
     now: i64,
 ) -> Result<()> {
-    let entity = &ctx.accounts.entity;
     let ip_account = &ctx.accounts.ip_account;
 
-    // The remaining_accounts layout after controller signers:
+    // The remaining_accounts layout after controller signer:
     // We need derivative_link, license_grant, royalty_policy, royalty_split (uninit)
-    // Controller signers count = entity.signature_threshold
-    let signer_count = entity.signature_threshold as usize;
-    let derivative_accounts = &ctx.remaining_accounts[signer_count..];
+    // Single controller signer is always at index 0
+    let derivative_accounts = &ctx.remaining_accounts[1..];
 
     require!(
         derivative_accounts.len() >= 4,

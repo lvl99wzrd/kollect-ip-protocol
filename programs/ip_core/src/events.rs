@@ -75,29 +75,21 @@ pub struct EntityCreated {
     pub creator: Pubkey,
     /// The entity handle.
     pub handle: [u8; MAX_HANDLE_LENGTH],
-    /// Number of controllers.
-    pub controller_count: u8,
-    /// Required signature threshold.
-    pub signature_threshold: u8,
+    /// The initial controller.
+    pub controller: Pubkey,
     /// Creation timestamp.
     pub created_at: i64,
 }
 
-/// Emitted when entity controllers are updated.
+/// Emitted when entity control is transferred.
 #[event]
-pub struct EntityControllersUpdated {
+pub struct EntityControlTransferred {
     /// The entity PDA.
     pub entity: Pubkey,
-    /// The entity (acts as authority).
-    pub authority: Pubkey,
-    /// Previous controller count.
-    pub old_controller_count: u8,
-    /// New controller count.
-    pub new_controller_count: u8,
-    /// Previous signature threshold.
-    pub old_threshold: u8,
-    /// New signature threshold.
-    pub new_threshold: u8,
+    /// The previous controller.
+    pub old_controller: Pubkey,
+    /// The new controller.
+    pub new_controller: Pubkey,
     /// Update timestamp.
     pub updated_at: i64,
 }

@@ -6,7 +6,6 @@ use crate::events::EntityMetadataCreated;
 use crate::state::{
     Entity, MetadataAccount, MetadataParentType, MetadataSchema, METADATA_ACCOUNT_SIZE,
 };
-use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{ENTITY_SEED, METADATA_SEED};
 use crate::utils::validation::validate_cid_not_empty;
 
@@ -39,13 +38,18 @@ pub struct CreateEntityMetadata<'info> {
     /// The metadata schema this metadata conforms to.
     pub schema: Account<'info, MetadataSchema>,
 
+    /// The entity controller (must sign).
+    #[account(
+        constraint = controller.key() == entity.controller @ IpCoreError::Unauthorized
+    )]
+    pub controller: Signer<'info>,
+
     /// Payer for account creation.
     #[account(mut)]
     pub payer: Signer<'info>,
 
     /// System program for account creation.
     pub system_program: Program<'info, System>,
-    // Remaining accounts are signers (entity controllers)
 }
 
 /// Create metadata for an entity.
@@ -56,7 +60,7 @@ pub struct CreateEntityMetadata<'info> {
 /// * `cid` - IPFS CID pointing to the metadata content
 ///
 /// # Errors
-/// * `IpCoreError::InsufficientSignatures` - Multisig threshold not met
+/// * `IpCoreError::Unauthorized` - Signer is not the entity controller
 /// * `IpCoreError::EmptyCid` - CID is empty
 pub fn handler(
     ctx: Context<CreateEntityMetadata>,
@@ -64,14 +68,6 @@ pub fn handler(
     cid: [u8; MAX_CID_LENGTH],
 ) -> Result<()> {
     let entity = &mut ctx.accounts.entity;
-
-    // Validate multisig
-    let signer_keys = extract_signer_keys(ctx.remaining_accounts);
-    validate_multisig_keys(
-        &signer_keys,
-        &entity.controllers,
-        entity.signature_threshold,
-    )?;
 
     // Auto-increment revision
     let new_revision = entity

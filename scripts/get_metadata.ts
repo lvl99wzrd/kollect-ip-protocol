@@ -8,11 +8,15 @@
  *   # All metadata accounts
  *   anchor run get_metadata --provider.cluster devnet
  *
+ *   # All metadata accounts filtered by schema
+ *   SCHEMA_PUBKEY=<pubkey> anchor run get_metadata --provider.cluster devnet
+ *
  *   # Single metadata account by PDA pubkey
  *   METADATA_PUBKEY=<pubkey> anchor run get_metadata --provider.cluster devnet
  *
  * Environment Variables:
  *   METADATA_PUBKEY  (optional) - PDA public key of an existing metadata account
+ *   SCHEMA_PUBKEY    (optional) - PDA public key of a schema to filter by (fetch-all only)
  */
 
 import * as anchor from "@coral-xyz/anchor";
@@ -99,12 +103,26 @@ async function main() {
   }
 
   const metadataPubkeyEnv = process.env.METADATA_PUBKEY;
+  const schemaPubkeyEnv = process.env.SCHEMA_PUBKEY;
+
+  let schemaPubkey: PublicKey | undefined;
+  if (schemaPubkeyEnv) {
+    try {
+      schemaPubkey = new PublicKey(schemaPubkeyEnv);
+    } catch {
+      console.error(`\nInvalid SCHEMA_PUBKEY: "${schemaPubkeyEnv}"`);
+      process.exit(1);
+    }
+  }
 
   console.log("=".repeat(60));
   console.log("Metadata Accounts");
   console.log("=".repeat(60));
   console.log(`Cluster:    ${cluster}`);
   console.log(`Program ID: ${program.programId.toBase58()}`);
+  if (schemaPubkey) {
+    console.log(`Schema:     ${schemaPubkey.toBase58()}`);
+  }
 
   // ── Single metadata account lookup ────────────────────────────
   if (metadataPubkeyEnv) {
@@ -136,10 +154,18 @@ async function main() {
   }
 
   // ── All metadata accounts lookup ──────────────────────────────
-  console.log("\nFetching all metadata accounts...");
+  const filters = schemaPubkey
+    ? [{ memcmp: { offset: 8, bytes: schemaPubkey.toBase58() } }]
+    : [];
+
+  console.log(
+    schemaPubkey
+      ? "\nFetching metadata accounts by schema..."
+      : "\nFetching all metadata accounts...",
+  );
   console.log("-".repeat(60));
 
-  const allMetadata = await program.account.metadataAccount.all();
+  const allMetadata = await program.account.metadataAccount.all(filters);
 
   if (allMetadata.length === 0) {
     console.log("\nNo metadata accounts registered yet.");

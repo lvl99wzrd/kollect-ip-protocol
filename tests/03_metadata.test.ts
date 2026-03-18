@@ -97,7 +97,7 @@ describe("ip_core metadata", () => {
         program.programId,
       );
 
-      await program.methods.createEntity(handle, [], 1).rpc();
+      await program.methods.createEntity(handle).rpc();
 
       // Create schema using IP metadata schema
       const schemaId = padBytes(ipSchemaJson.schema.schema_id, 32);
@@ -144,10 +144,8 @@ describe("ip_core metadata", () => {
           metadata: metadataPda,
           entity: entityPda,
           schema: schemaPda,
+          controller: creator.publicKey,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       const metadata = await program.account.metadataAccount.fetch(metadataPda);
@@ -248,7 +246,7 @@ describe("ip_core metadata", () => {
       );
 
       try {
-        await program.methods.createEntity(handle, [], 1).rpc();
+        await program.methods.createEntity(handle).rpc();
       } catch {
         // already exists
       }
@@ -264,12 +262,10 @@ describe("ip_core metadata", () => {
         .createIp(contentHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryAta.address,
           payerTokenAccount: payerAta.address,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // --- schema (reuse ipSchemaJson schema already on-chain) ---
@@ -310,10 +306,8 @@ describe("ip_core metadata", () => {
           ip: ipPda,
           ownerEntity: entityPda,
           schema: schemaPda,
+          controller: creator.publicKey,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       const metadata = await program.account.metadataAccount.fetch(metadataPda);
@@ -348,10 +342,8 @@ describe("ip_core metadata", () => {
             ip: ipPda,
             ownerEntity: entityPda,
             schema: schemaPda,
+            controller: creator.publicKey,
           })
-          .remainingAccounts([
-            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-          ])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -407,7 +399,7 @@ describe("ip_core metadata", () => {
 
       // Build both instructions
       const createEntityIx = await program.methods
-        .createEntity(handle, [], 1)
+        .createEntity(handle)
         .instruction();
 
       const createMetadataIx = await program.methods
@@ -416,10 +408,8 @@ describe("ip_core metadata", () => {
           metadata: metadataPda,
           entity: entityPda,
           schema: schemaPda,
+          controller: creator.publicKey,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .instruction();
 
       // Send as a single transaction
@@ -495,7 +485,7 @@ describe("ip_core metadata", () => {
       );
 
       try {
-        await program.methods.createEntity(handle, [], 1).rpc();
+        await program.methods.createEntity(handle).rpc();
       } catch {
         // already exists
       }
@@ -527,12 +517,10 @@ describe("ip_core metadata", () => {
         .createIp(contentHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryAta.address,
           payerTokenAccount: payerAta.address,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .instruction();
 
       const createIpMetadataIx = await program.methods
@@ -542,10 +530,8 @@ describe("ip_core metadata", () => {
           ip: ipPda,
           ownerEntity: entityPda,
           schema: schemaPda,
+          controller: creator.publicKey,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .instruction();
 
       // Send as a single transaction

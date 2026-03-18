@@ -192,11 +192,7 @@ export interface TestEntity {
 /**
  * Create an ip_core Entity (idempotent).
  */
-export async function createTestEntity(
-  handle: string,
-  additionalControllers: PublicKey[] = [],
-  threshold = 1,
-): Promise<TestEntity> {
+export async function createTestEntity(handle: string): Promise<TestEntity> {
   const provider = getProvider();
   const { ipCore } = getPrograms();
   const creator = provider.wallet as anchor.Wallet;
@@ -211,9 +207,7 @@ export async function createTestEntity(
   try {
     await ipCore.account.entity.fetch(entityPda);
   } catch {
-    await ipCore.methods
-      .createEntity(handleBytes, additionalControllers, threshold)
-      .rpc();
+    await ipCore.methods.createEntity(handleBytes).rpc();
   }
 
   return { entityPda, handle: handleBytes };
@@ -228,12 +222,8 @@ export interface TestIp {
 
 /**
  * Create an ip_core IpAccount (always creates a new one with random hash).
- * Pass additional signers/keypairs for multisig entities.
  */
-export async function createTestIp(
-  entityPda: PublicKey,
-  extraSigners: Keypair[] = [],
-): Promise<TestIp> {
+export async function createTestIp(entityPda: PublicKey): Promise<TestIp> {
   const provider = getProvider();
   const { ipCore } = getPrograms();
   const creator = provider.wallet as anchor.Wallet;
@@ -246,20 +236,14 @@ export async function createTestIp(
     ipCore.programId,
   );
 
-  const remaining = [
-    signerMeta(creator.publicKey),
-    ...extraSigners.map((kp) => signerMeta(kp.publicKey)),
-  ];
-
   await ipCore.methods
     .createIp(contentHash)
     .accounts({
       registrantEntity: entityPda,
+      controller: creator.publicKey,
       treasuryTokenAccount: state.treasuryTokenAccount,
       payerTokenAccount: state.payerTokenAccount,
     })
-    .remainingAccounts(remaining)
-    .signers(extraSigners)
     .rpc();
 
   return { ipPda, contentHash };

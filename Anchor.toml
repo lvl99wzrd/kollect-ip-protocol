@@ -6,10 +6,11 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-ip_core = "CSSfTXVfCUmvZCEjPZxFne5EPewzTGCyYAybLNihLQM1"
+ip_core = "8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G"
+kollect = "AuhX96zooudoN7Ad6dML8ehnFmqhFS8pvDU4AvSMRVKD"
 
 [programs.localnet]
-ip_core = "CSSfTXVfCUmvZCEjPZxFne5EPewzTGCyYAybLNihLQM1"
+ip_core = "8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G"
 kollect = "AuhX96zooudoN7Ad6dML8ehnFmqhFS8pvDU4AvSMRVKD"
 
 [registry]

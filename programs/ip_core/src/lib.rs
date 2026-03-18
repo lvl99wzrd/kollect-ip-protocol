@@ -10,7 +10,7 @@ pub mod utils;
 use constants::{MAX_CID_LENGTH, MAX_HANDLE_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
 use instructions::*;
 
-declare_id!("CSSfTXVfCUmvZCEjPZxFne5EPewzTGCyYAybLNihLQM1");
+declare_id!("8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G");
 
 #[program]
 pub mod ip_core {
@@ -54,28 +54,16 @@ pub mod ip_core {
     pub fn create_entity(
         ctx: Context<CreateEntity>,
         handle: [u8; MAX_HANDLE_LENGTH],
-        additional_controllers: Vec<Pubkey>,
-        signature_threshold: u8,
     ) -> Result<()> {
-        instructions::entity::create_entity::handler(
-            ctx,
-            handle,
-            additional_controllers,
-            signature_threshold,
-        )
+        instructions::entity::create_entity::handler(ctx, handle)
     }
 
-    /// Update entity controllers by replacing the entire controller list.
-    pub fn update_entity_controllers(
-        ctx: Context<UpdateEntityControllers>,
-        new_controllers: Vec<Pubkey>,
-        new_threshold: u8,
+    /// Transfer entity control to a new controller.
+    pub fn transfer_entity_control(
+        ctx: Context<TransferEntityControl>,
+        new_controller: Pubkey,
     ) -> Result<()> {
-        instructions::entity::update_entity_controllers::handler(
-            ctx,
-            new_controllers,
-            new_threshold,
-        )
+        instructions::entity::transfer_entity_control::handler(ctx, new_controller)
     }
 
     // ===== Metadata Instructions =====

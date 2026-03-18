@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 use crate::error::IpCoreError;
 use crate::events::IpTransferred;
 use crate::state::{Entity, IpAccount};
-use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{ENTITY_SEED, IP_SEED};
 
 /// Accounts required for transfer_ip instruction.
@@ -31,7 +30,12 @@ pub struct TransferIp<'info> {
         bump = new_owner_entity.bump
     )]
     pub new_owner_entity: Account<'info, Entity>,
-    // Remaining accounts are signers (current owner entity controllers)
+
+    /// The current owner entity controller (must sign).
+    #[account(
+        constraint = controller.key() == current_owner_entity.controller @ IpCoreError::Unauthorized
+    )]
+    pub controller: Signer<'info>,
 }
 
 /// Transfer IP ownership.
@@ -47,20 +51,12 @@ pub struct TransferIp<'info> {
 /// * `ctx` - Context containing accounts
 ///
 /// # Errors
-/// * `IpCoreError::InsufficientSignatures` - Current owner multisig threshold not met
+/// * `IpCoreError::Unauthorized` - Signer is not the current owner entity controller
 /// * `IpCoreError::InvalidOwnership` - Signer is not the current owner
 pub fn handler(ctx: Context<TransferIp>) -> Result<()> {
     let ip = &mut ctx.accounts.ip;
     let current_owner = &ctx.accounts.current_owner_entity;
     let new_owner = &ctx.accounts.new_owner_entity;
-
-    // Validate current owner multisig
-    let signer_keys = extract_signer_keys(ctx.remaining_accounts);
-    validate_multisig_keys(
-        &signer_keys,
-        &current_owner.controllers,
-        current_owner.signature_threshold,
-    )?;
 
     // ONLY update current_owner_entity - all other fields remain immutable
     ip.current_owner_entity = new_owner.key();

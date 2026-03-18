@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 use crate::error::IpCoreError;
 use crate::events::DerivativeLinkCreated;
 use crate::state::{DerivativeLink, Entity, IpAccount, DERIVATIVE_LINK_SIZE};
-use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{DERIVATIVE_SEED, ENTITY_SEED, IP_SEED};
 
 /// License account data structure (from license program).
@@ -73,6 +72,12 @@ pub struct CreateDerivativeLink<'info> {
     )]
     pub child_owner_entity: Account<'info, Entity>,
 
+    /// The child owner entity controller (must sign).
+    #[account(
+        constraint = controller.key() == child_owner_entity.controller @ IpCoreError::Unauthorized
+    )]
+    pub controller: Signer<'info>,
+
     /// The license grant account (owned by external license program).
     /// CHECK: We validate the owner and deserialize the required fields.
     pub license_grant: UncheckedAccount<'info>,
@@ -87,7 +92,6 @@ pub struct CreateDerivativeLink<'info> {
 
     /// System program for account creation.
     pub system_program: Program<'info, System>,
-    // Remaining accounts are signers (child owner entity controllers)
 }
 
 /// Create a derivative link between parent and child IPs.
@@ -97,7 +101,7 @@ pub struct CreateDerivativeLink<'info> {
 /// * `license_program_id` - Expected owner of the license accounts
 ///
 /// # Errors
-/// * `IpCoreError::InsufficientSignatures` - Child owner multisig threshold not met
+/// * `IpCoreError::Unauthorized` - Signer is not the child owner entity controller
 /// * `IpCoreError::InvalidLicenseOwner` - License not owned by license program
 /// * `IpCoreError::InvalidLicenseOrigin` - License doesn't reference parent IP
 /// * `IpCoreError::DerivativesNotAllowed` - License doesn't allow derivatives
@@ -107,14 +111,6 @@ pub fn handler(ctx: Context<CreateDerivativeLink>, license_program_id: Pubkey) -
     let parent_ip = &ctx.accounts.parent_ip;
     let license_grant_info = &ctx.accounts.license_grant;
     let license_info = &ctx.accounts.license;
-
-    // Validate child owner multisig
-    let signer_keys = extract_signer_keys(ctx.remaining_accounts);
-    validate_multisig_keys(
-        &signer_keys,
-        &child_owner.controllers,
-        child_owner.signature_threshold,
-    )?;
 
     // 1. Validate LicenseGrant account owner equals LICENSE_PROGRAM_ID
     if license_grant_info.owner != &license_program_id {

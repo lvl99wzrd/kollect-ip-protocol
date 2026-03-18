@@ -3,7 +3,6 @@ use anchor_lang::prelude::*;
 use crate::error::IpCoreError;
 use crate::events::DerivativeLicenseUpdated;
 use crate::state::{DerivativeLink, Entity, IpAccount};
-use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{DERIVATIVE_SEED, ENTITY_SEED, IP_SEED};
 
 use super::create_derivative_link::{LicenseData, LicenseGrantData};
@@ -50,7 +49,12 @@ pub struct UpdateDerivativeLicense<'info> {
     /// The new license account (owned by external license program).
     /// CHECK: We validate the owner and deserialize the required fields.
     pub new_license: UncheckedAccount<'info>,
-    // Remaining accounts are signers (child owner entity controllers)
+
+    /// The child owner entity controller (must sign).
+    #[account(
+        constraint = controller.key() == child_owner_entity.controller @ IpCoreError::Unauthorized
+    )]
+    pub controller: Signer<'info>,
 }
 
 /// Update the license on a derivative link.
@@ -62,7 +66,7 @@ pub struct UpdateDerivativeLicense<'info> {
 /// * `license_program_id` - Expected owner of the license account
 ///
 /// # Errors
-/// * `IpCoreError::InsufficientSignatures` - Child owner multisig threshold not met
+/// * `IpCoreError::Unauthorized` - Controller signature verification failed
 /// * `IpCoreError::InvalidLicenseOwner` - License not owned by license program
 /// * `IpCoreError::InvalidLicenseOrigin` - License doesn't reference parent IP
 /// * `IpCoreError::DerivativesNotAllowed` - License doesn't allow derivatives
@@ -74,14 +78,6 @@ pub fn handler(ctx: Context<UpdateDerivativeLicense>, license_program_id: Pubkey
     let parent_ip = &ctx.accounts.parent_ip;
     let new_license_grant_info = &ctx.accounts.new_license_grant;
     let new_license_info = &ctx.accounts.new_license;
-
-    // Validate child owner multisig
-    let signer_keys = extract_signer_keys(ctx.remaining_accounts);
-    validate_multisig_keys(
-        &signer_keys,
-        &child_owner.controllers,
-        child_owner.signature_threshold,
-    )?;
 
     // 1. Validate license grant owner
     if new_license_grant_info.owner != &license_program_id {

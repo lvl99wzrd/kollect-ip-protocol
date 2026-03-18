@@ -5,7 +5,7 @@ use crate::error::KollectError;
 use crate::events::RoyaltyPolicyUpdated;
 use crate::state::{IpConfig, LicenseTemplate, RoyaltyPolicy};
 use crate::utils::seeds::{IP_CONFIG_SEED, LICENSE_TEMPLATE_SEED, ROYALTY_POLICY_SEED};
-use crate::utils::validation::validate_entity_multisig;
+use crate::utils::validation::validate_entity_controller;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct UpdateRoyaltyPolicyParams {
@@ -44,7 +44,7 @@ pub struct UpdateRoyaltyPolicy<'info> {
         bump = royalty_policy.bump,
     )]
     pub royalty_policy: Account<'info, RoyaltyPolicy>,
-    // remaining_accounts: entity controller signers
+    // remaining_accounts: entity controller signer
 }
 
 pub fn handler(
@@ -52,7 +52,7 @@ pub fn handler(
     params: UpdateRoyaltyPolicyParams,
 ) -> Result<()> {
     let entity = &ctx.accounts.entity;
-    validate_entity_multisig(entity, ctx.remaining_accounts)?;
+    validate_entity_controller(entity, ctx.remaining_accounts)?;
 
     let policy = &mut ctx.accounts.royalty_policy;
 

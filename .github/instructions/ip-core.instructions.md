@@ -30,7 +30,6 @@ Defined in shared constants module:
 - MAX_VERSION_LENGTH = 16
 - MAX_CID_LENGTH = 96
 - MAX_HANDLE_LENGTH = 32
-- MAX_CONTROLLERS = 5
 
 Copilot must never invent dynamic sizing.
 
@@ -44,11 +43,6 @@ Define explicit errors:
 - TreasuryAlreadyInitialized
 - Unauthorized
 - InvalidAuthority
-- InvalidThreshold
-- ControllerLimitExceeded
-- ControllerNotFound
-- CannotRemoveLastController
-- InsufficientSignatures
 - EntityNotInitialized
 - InvalidHandle
 - HandleTooLong
@@ -153,20 +147,20 @@ A minimal "FreeToUse" license MAY contain:
 
 # INSTRUCTION → ACCOUNT MUTATION MAP
 
-| Instruction               | Accounts Mutated                             |
-| ------------------------- | -------------------------------------------- |
-| initialize_config         | ProtocolConfig                               |
-| update_config             | ProtocolConfig                               |
-| initialize_treasury       | ProtocolTreasury                             |
-| withdraw_treasury         | SPL token account (authority = treasury PDA) |
-| create_metadata_schema    | MetadataSchema                               |
-| create_entity             | Entity                                       |
-| update_entity_controllers | Entity                                       |
-| create_entity_metadata    | MetadataAccount, Entity                      |
-| create_ip                 | IPAccount                                    |
-| transfer_ip               | IPAccount                                    |
-| create_ip_metadata        | MetadataAccount, IPAccount                   |
-| create_derivative_link    | DerivativeLink                               |
+| Instruction             | Accounts Mutated                             |
+| ----------------------- | -------------------------------------------- |
+| initialize_config       | ProtocolConfig                               |
+| update_config           | ProtocolConfig                               |
+| initialize_treasury     | ProtocolTreasury                             |
+| withdraw_treasury       | SPL token account (authority = treasury PDA) |
+| create_metadata_schema  | MetadataSchema                               |
+| create_entity           | Entity                                       |
+| transfer_entity_control | Entity                                       |
+| create_entity_metadata  | MetadataAccount, Entity                      |
+| create_ip               | IPAccount                                    |
+| transfer_ip             | IPAccount                                    |
+| create_ip_metadata      | MetadataAccount, IPAccount                   |
+| create_derivative_link  | DerivativeLink                               |
 
 Any instruction not listed is invalid.
 
@@ -326,14 +320,14 @@ IP:
 
 ### create_entity_metadata
 
-- Validates entity multisig.
+- Requires entity controller signature.
 - Creates MetadataAccount.
 - Increments entity.current_metadata_revision.
 - Updates entity.updated_at.
 
 ### create_ip_metadata
 
-- Validates current_owner_entity.
+- Requires owner entity controller signature.
 - Creates MetadataAccount.
 - Increments ip.current_metadata_revision.
 - Updates ip.updated_at.
@@ -362,8 +356,7 @@ Where:
 
 - creator: Pubkey
 - handle: [u8; MAX_HANDLE_LENGTH]
-- controllers: Vec (max 5)
-- signature_threshold: u8
+- controller: Pubkey
 - current_metadata_revision: u64
 - created_at: i64
 - updated_at: i64
@@ -371,21 +364,20 @@ Where:
 
 ## Hard Constraints
 
-- controllers.len() ∈ [1, 5]
-- signature_threshold ∈ [1, controllers.len()]
-- creator must be included in controllers during creation.
-- creator can be removed from controllers but only if signature_threshold is updated accordingly.
+- controller must be a signer for all entity mutations.
+- controller can be any Pubkey (EOA or external multisig PDA such as Squads).
 - handle immutable
 - creator immutable
 - created_at immutable
 - handle unique per creator (PDA uniqueness enforced)
 
-## Multisig Validation
+## Authorization
 
 For any mutation:
 
-- signer_count >= signature_threshold
-- every signer must be in controllers
+- controller must be a transaction signer.
+
+Multisig is delegated to external protocols (e.g., Squads). The controller field can point to a multisig PDA.
 
 ## Instructions
 
@@ -397,19 +389,17 @@ For any mutation:
   ```
 - Fails if PDA already exists.
 - Validates handle format.
-- Adds creator as first controller.
-- Validates threshold.
+- Sets controller = creator.
 - Sets current_metadata_revision = 0.
 - Sets created_at and updated_at.
 
-### update_entity_controllers
+### transfer_entity_control
 
-- Updates controllers with new list.
-- Must respect MAX_CONTROLLERS.
-- Must maintain valid threshold.
+- Requires current controller signature.
+- Updates controller to new_controller.
 - Updates updated_at.
-- Cannot remove creator.
 - Cannot modify handle.
+- Cannot modify creator.
 
 No delete allowed.
 
@@ -448,7 +438,7 @@ No delete allowed.
 
 ### create_ip
 
-- Requires registrant_entity multisig approval.
+- Requires registrant entity controller signature.
 - Requires ProtocolConfig account.
 - Requires ProtocolTreasury account.
 - Requires treasury token account.
@@ -471,7 +461,7 @@ No delete allowed.
 5. Payer token account must:
    - Have mint = `config.registration_currency`
    - Be owned by a transaction signer
-6. The payer must be one of the validated multisig signers of `registrant_entity`.
+6. The payer must be the controller of `registrant_entity`.
 
 ### Payment Enforcement
 
@@ -496,7 +486,7 @@ No other fields may be mutated.
 
 ### transfer_ip
 
-- Requires current_owner_entity multisig approval.
+- Requires current owner entity controller signature.
 - Updates `current_owner_entity` only.
 - Must not mutate:
   - content_hash
@@ -546,7 +536,7 @@ No delete allowed.
 - Requires child_ip exists.
 - license provided at creation.
 - license.owner == caller_program_id.
-- Requires child owner approval.
+- Requires child owner entity controller signature.
 - Fails if already exists.
 
 ### update_derivative_license
@@ -564,7 +554,6 @@ Every account struct must include:
 
 - 8 bytes discriminator
 - All fixed fields
-- Explicitly bounded Vec sizing
 - 1 byte bump
 
 Anchor space must be calculated explicitly.

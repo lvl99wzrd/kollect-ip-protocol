@@ -42,8 +42,7 @@ function printEntity(
   entity: {
     creator: PublicKey;
     handle: number[];
-    controllers: PublicKey[];
-    signatureThreshold: number;
+    controller: PublicKey;
     currentMetadataRevision: anchor.BN;
     createdAt: anchor.BN;
     updatedAt: anchor.BN;
@@ -56,12 +55,7 @@ function printEntity(
   console.log(`\n${prefix}PDA: ${pubkey.toBase58()}`);
   console.log(`  Handle:             ${decodeBytes(entity.handle)}`);
   console.log(`  Creator:            ${entity.creator.toBase58()}`);
-  console.log(
-    `  Controllers:        ${entity.controllers
-      .map((c) => c.toBase58())
-      .join(", ")}`,
-  );
-  console.log(`  Sig Threshold:      ${entity.signatureThreshold}`);
+  console.log(`  Controller:         ${entity.controller.toBase58()}`);
   console.log(
     `  Metadata Revision:  ${entity.currentMetadataRevision.toString()}`,
   );

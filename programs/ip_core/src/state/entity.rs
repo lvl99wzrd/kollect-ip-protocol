@@ -1,25 +1,24 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{MAX_CONTROLLERS, MAX_HANDLE_LENGTH};
+use crate::constants::MAX_HANDLE_LENGTH;
 
 /// Space calculation for Entity:
 /// - 8 bytes: discriminator
 /// - 32 bytes: creator
 /// - 32 bytes: handle
-/// - 4 + (5 * 32) bytes: controllers vec (4 byte length + max 5 pubkeys)
-/// - 1 byte: signature_threshold
+/// - 32 bytes: controller
 /// - 8 bytes: current_metadata_revision
 /// - 8 bytes: created_at
 /// - 8 bytes: updated_at
 /// - 1 byte: bump
 ///
-/// Total: 262 bytes
-pub const ENTITY_SIZE: usize = 8 + 32 + 32 + (4 + MAX_CONTROLLERS * 32) + 1 + 8 + 8 + 8 + 1;
+/// Total: 129 bytes
+pub const ENTITY_SIZE: usize = 8 + 32 + 32 + 32 + 8 + 8 + 8 + 1;
 
 /// An on-chain entity that can own IP and sign transactions.
 ///
-/// Entities use a multisig pattern where multiple controllers can manage
-/// the entity's assets with a configurable signature threshold.
+/// Entities use a single controller model. For multisig functionality,
+/// the controller can be set to an external multisig PDA (e.g., Squads).
 #[account]
 #[derive(Debug)]
 pub struct Entity {
@@ -29,13 +28,9 @@ pub struct Entity {
     /// Unique handle for this entity (lowercase alphanumeric, immutable).
     pub handle: [u8; MAX_HANDLE_LENGTH],
 
-    /// List of controller public keys that can sign for this entity.
-    /// Maximum 5 controllers.
-    pub controllers: Vec<Pubkey>,
-
-    /// Number of signatures required to authorize actions.
-    /// Must be between 1 and controllers.len().
-    pub signature_threshold: u8,
+    /// The controller public key authorized to act on behalf of this entity.
+    /// Can be an EOA or an external multisig PDA (e.g., Squads).
+    pub controller: Pubkey,
 
     /// Current metadata revision number.
     /// Incremented when new metadata is attached.

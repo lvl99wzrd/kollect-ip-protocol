@@ -5,7 +5,7 @@ use crate::error::KollectError;
 use crate::events::LicenseTemplateUpdated;
 use crate::state::{IpConfig, LicenseTemplate};
 use crate::utils::seeds::{IP_CONFIG_SEED, LICENSE_TEMPLATE_SEED};
-use crate::utils::validation::validate_entity_multisig;
+use crate::utils::validation::validate_entity_controller;
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct UpdateLicenseTemplateParams {
@@ -37,7 +37,7 @@ pub struct UpdateLicenseTemplate<'info> {
         constraint = license_template.creator_entity == entity.key() @ KollectError::InvalidAuthority,
     )]
     pub license_template: Account<'info, LicenseTemplate>,
-    // remaining_accounts: entity controller signers
+    // remaining_accounts: entity controller signer
 }
 
 pub fn handler(
@@ -45,7 +45,7 @@ pub fn handler(
     params: UpdateLicenseTemplateParams,
 ) -> Result<()> {
     let entity = &ctx.accounts.entity;
-    validate_entity_multisig(entity, ctx.remaining_accounts)?;
+    validate_entity_controller(entity, ctx.remaining_accounts)?;
 
     let template = &mut ctx.accounts.license_template;
 

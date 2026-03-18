@@ -1,11 +1,10 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{MAX_CONTROLLERS, MAX_HANDLE_LENGTH};
-use crate::error::IpCoreError;
+use crate::constants::MAX_HANDLE_LENGTH;
 use crate::events::EntityCreated;
 use crate::state::{Entity, ENTITY_SIZE};
 use crate::utils::seeds::ENTITY_SEED;
-use crate::utils::validation::{validate_handle, validate_threshold};
+use crate::utils::validation::validate_handle;
 
 /// Accounts required for create_entity instruction.
 #[derive(Accounts)]
@@ -35,35 +34,14 @@ pub struct CreateEntity<'info> {
 /// # Arguments
 /// * `ctx` - Context containing accounts
 /// * `handle` - Unique handle for this entity (lowercase alphanumeric, 1-32 chars)
-/// * `additional_controllers` - Additional controller pubkeys (optional, max 4 since creator is first)
-/// * `signature_threshold` - Required number of signatures (1 to total controllers)
 ///
 /// # Errors
 /// * `IpCoreError::InvalidHandle` - Handle contains invalid characters
 /// * `IpCoreError::HandleTooLong` - Handle exceeds 32 characters
 /// * `IpCoreError::EmptyHandle` - Handle is empty
-/// * `IpCoreError::InvalidThreshold` - Threshold is invalid
-/// * `IpCoreError::ControllerLimitExceeded` - Too many controllers
-pub fn handler(
-    ctx: Context<CreateEntity>,
-    handle: [u8; MAX_HANDLE_LENGTH],
-    additional_controllers: Vec<Pubkey>,
-    signature_threshold: u8,
-) -> Result<()> {
+pub fn handler(ctx: Context<CreateEntity>, handle: [u8; MAX_HANDLE_LENGTH]) -> Result<()> {
     // Validate handle format
     validate_handle(&handle)?;
-
-    // Build controllers list with creator first
-    let mut controllers = vec![ctx.accounts.creator.key()];
-    controllers.extend(additional_controllers);
-
-    // Validate controller count
-    if controllers.len() > MAX_CONTROLLERS {
-        return Err(IpCoreError::ControllerLimitExceeded.into());
-    }
-
-    // Validate threshold
-    validate_threshold(signature_threshold, controllers.len())?;
 
     // Get current timestamp
     let clock = Clock::get()?;
@@ -72,14 +50,12 @@ pub fn handler(
     // Capture values needed for event before mutable borrow
     let entity_key = ctx.accounts.entity.key();
     let creator_key = ctx.accounts.creator.key();
-    let controller_count = controllers.len() as u8;
 
-    // Initialize entity
+    // Initialize entity with creator as controller
     let entity = &mut ctx.accounts.entity;
     entity.creator = creator_key;
     entity.handle = handle;
-    entity.controllers = controllers;
-    entity.signature_threshold = signature_threshold;
+    entity.controller = creator_key;
     entity.current_metadata_revision = 0;
     entity.created_at = now;
     entity.updated_at = now;
@@ -89,8 +65,7 @@ pub fn handler(
         entity: entity_key,
         creator: creator_key,
         handle,
-        controller_count,
-        signature_threshold,
+        controller: creator_key,
         created_at: now,
     });
 

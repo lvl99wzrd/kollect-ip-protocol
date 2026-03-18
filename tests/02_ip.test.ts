@@ -148,7 +148,7 @@ describe("ip_core ip", () => {
     }
 
     if (!entityExists) {
-      await program.methods.createEntity(handle, [], 1).rpc();
+      await program.methods.createEntity(handle).rpc();
     }
   });
 
@@ -169,12 +169,10 @@ describe("ip_core ip", () => {
         .createIp(contentHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       const ip = await program.account.ipAccount.fetch(ipPda);
@@ -215,12 +213,10 @@ describe("ip_core ip", () => {
         .createIp(contentHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Attempt to create another IP with the same content hash from same entity should fail
@@ -229,12 +225,10 @@ describe("ip_core ip", () => {
           .createIp(contentHash)
           .accounts({
             registrantEntity: entityPda,
+            controller: creator.publicKey,
             treasuryTokenAccount: treasuryTokenAccount,
             payerTokenAccount: payerTokenAccount,
           })
-          .remainingAccounts([
-            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-          ])
           .rpc();
 
         expect.fail(
@@ -254,12 +248,10 @@ describe("ip_core ip", () => {
         .createIp(contentHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Create a different entity
@@ -274,7 +266,7 @@ describe("ip_core ip", () => {
       );
 
       try {
-        await program.methods.createEntity(differentHandle, [], 1).rpc();
+        await program.methods.createEntity(differentHandle).rpc();
       } catch {
         // Already exists
       }
@@ -302,12 +294,10 @@ describe("ip_core ip", () => {
         .createIp(contentHash)
         .accounts({
           registrantEntity: differentEntityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Verify both IPs exist with same content hash but different registrants
@@ -337,12 +327,10 @@ describe("ip_core ip", () => {
         .createIp(contentHash)
         .accounts({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Create new owner entity
@@ -357,7 +345,7 @@ describe("ip_core ip", () => {
       );
 
       try {
-        await program.methods.createEntity(newHandle, [], 1).rpc();
+        await program.methods.createEntity(newHandle).rpc();
       } catch {
         // Already exists
       }
@@ -375,10 +363,8 @@ describe("ip_core ip", () => {
           ip: ipPda,
           currentOwnerEntity: entityPda,
           newOwnerEntity: newOwnerEntityPda,
+          controller: creator.publicKey,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       const ipAfter = await program.account.ipAccount.fetch(ipPda);
