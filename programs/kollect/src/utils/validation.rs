@@ -5,7 +5,10 @@ use crate::error::KollectError;
 
 /// Validate that the entity's controller has signed the transaction.
 /// `remaining_accounts` should include the controller signer account.
-pub fn validate_entity_controller(entity: &Entity, remaining_accounts: &[AccountInfo]) -> Result<()> {
+pub fn validate_entity_controller(
+    entity: &Entity,
+    remaining_accounts: &[AccountInfo],
+) -> Result<()> {
     let is_signed = remaining_accounts
         .iter()
         .any(|a| a.is_signer && a.key() == entity.controller);

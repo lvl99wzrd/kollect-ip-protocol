@@ -192,9 +192,7 @@ export interface TestEntity {
 /**
  * Create an ip_core Entity (idempotent).
  */
-export async function createTestEntity(
-  handle: string,
-): Promise<TestEntity> {
+export async function createTestEntity(handle: string): Promise<TestEntity> {
   const provider = getProvider();
   const { ipCore } = getPrograms();
   const creator = provider.wallet as anchor.Wallet;
@@ -209,9 +207,7 @@ export async function createTestEntity(
   try {
     await ipCore.account.entity.fetch(entityPda);
   } catch {
-    await ipCore.methods
-      .createEntity(handleBytes)
-      .rpc();
+    await ipCore.methods.createEntity(handleBytes).rpc();
   }
 
   return { entityPda, handle: handleBytes };
@@ -227,9 +223,7 @@ export interface TestIp {
 /**
  * Create an ip_core IpAccount (always creates a new one with random hash).
  */
-export async function createTestIp(
-  entityPda: PublicKey,
-): Promise<TestIp> {
+export async function createTestIp(entityPda: PublicKey): Promise<TestIp> {
   const provider = getProvider();
   const { ipCore } = getPrograms();
   const creator = provider.wallet as anchor.Wallet;

@@ -80,9 +80,7 @@ describe("kollect entity treasury", () => {
 
     it("fails with non-controller signer", async () => {
       // Create a new entity
-      const testEntity = await createTestEntity(
-        "ctrl_treasury_test",
-      );
+      const testEntity = await createTestEntity("ctrl_treasury_test");
       const testTreasuryPda = deriveEntityTreasuryPda(
         testEntity.entityPda,
         kollect.programId,
