@@ -7,11 +7,11 @@ skip-lint = false
 
 [programs.devnet]
 ip_core = "8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G"
-license = "E4mqwDTFiwaq1KsfkepcMRcwWDXoLzEAREZgjQcMZpFj"
+kollect = "AuhX96zooudoN7Ad6dML8ehnFmqhFS8pvDU4AvSMRVKD"
 
 [programs.localnet]
 ip_core = "8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G"
-license = "E4mqwDTFiwaq1KsfkepcMRcwWDXoLzEAREZgjQcMZpFj"
+kollect = "AuhX96zooudoN7Ad6dML8ehnFmqhFS8pvDU4AvSMRVKD"
 
 [registry]
 url = "https://api.apr.dev"
