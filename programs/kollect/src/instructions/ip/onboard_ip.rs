@@ -116,10 +116,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
     // The derivative accounts are passed as additional remaining_accounts
     // after the entity controller signers.
     if is_derivative {
-        create_royalty_split_for_derivative(
-            &ctx,
-            now,
-        )?;
+        create_royalty_split_for_derivative(&ctx, now)?;
     }
 
     Ok(())
@@ -159,9 +156,8 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
 
     // Deserialize the derivative link
     let derivative_link_data = derivative_link_info.try_borrow_data()?;
-    let derivative_link =
-        DerivativeLink::try_deserialize(&mut &derivative_link_data[..])
-            .map_err(|_| error!(KollectError::InvalidDerivativeLink))?;
+    let derivative_link = DerivativeLink::try_deserialize(&mut &derivative_link_data[..])
+        .map_err(|_| error!(KollectError::InvalidDerivativeLink))?;
 
     // Validate the derivative link references our IP as child
     require!(
@@ -171,9 +167,8 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
 
     // Deserialize royalty policy
     let royalty_policy_data = royalty_policy_info.try_borrow_data()?;
-    let royalty_policy =
-        RoyaltyPolicy::try_deserialize(&mut &royalty_policy_data[..])
-            .map_err(|_| error!(KollectError::InvalidLicenseTemplate))?;
+    let royalty_policy = RoyaltyPolicy::try_deserialize(&mut &royalty_policy_data[..])
+        .map_err(|_| error!(KollectError::InvalidLicenseTemplate))?;
 
     // Derive expected PDA for the royalty_split
     let parent_ip = derivative_link.parent_ip;
@@ -227,7 +222,7 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
     };
     // Write discriminator + data
     let discriminator = RoyaltySplit::DISCRIMINATOR;
-    split_data[..8].copy_from_slice(&discriminator);
+    split_data[..8].copy_from_slice(discriminator);
     let serialized = split.try_to_vec()?;
     split_data[8..8 + serialized.len()].copy_from_slice(&serialized);
 

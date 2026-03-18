@@ -33,15 +33,14 @@ describe("kollect venue", () => {
       const name = venueName("Test Club Alpha");
 
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(venueId),
-          venueAuthority.publicKey,
+        .registerVenue(new anchor.BN(venueId), {
+          venueAuthority: venueAuthority.publicKey,
           name,
-          1, // venue_type
-          500, // capacity
-          12, // operating_hours
-          10_000, // multiplier_bps (100%)
-        )
+          venueType: 1,
+          capacity: 500,
+          operatingHours: 12,
+          multiplierBps: 10_000,
+        })
         .rpc();
 
       const venue = await kollect.account.venueAccount.fetch(venuePda);
@@ -63,15 +62,14 @@ describe("kollect venue", () => {
         const venuePda = deriveVenuePda(venueId, kollect.programId);
 
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId),
-            authority.publicKey,
-            venueName(`Venue Type ${vt}`),
-            vt,
-            100,
-            8,
-            5_000,
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            name: venueName(`Venue Type ${vt}`),
+            venueType: vt,
+            capacity: 100,
+            operatingHours: 8,
+            multiplierBps: 5_000,
+          })
           .rpc();
 
         const venue = await kollect.account.venueAccount.fetch(venuePda);
@@ -84,15 +82,14 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId),
-            authority.publicKey,
-            venueName("Bad Type"),
-            6, // invalid: max is 5
-            100,
-            8,
-            5_000,
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            name: venueName("Bad Type"),
+            venueType: 6,
+            capacity: 100,
+            operatingHours: 8,
+            multiplierBps: 5_000,
+          })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -105,15 +102,14 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId),
-            authority.publicKey,
-            venueName("Zero Cap"),
-            1,
-            0, // invalid
-            8,
-            5_000,
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            name: venueName("Zero Cap"),
+            venueType: 1,
+            capacity: 0,
+            operatingHours: 8,
+            multiplierBps: 5_000,
+          })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -126,15 +122,14 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId),
-            authority.publicKey,
-            venueName("Zero Hours"),
-            1,
-            100,
-            0, // invalid
-            5_000,
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            name: venueName("Zero Hours"),
+            venueType: 1,
+            capacity: 100,
+            operatingHours: 0,
+            multiplierBps: 5_000,
+          })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -147,15 +142,14 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId),
-            authority.publicKey,
-            venueName("Too Many Hours"),
-            1,
-            100,
-            25, // invalid: max is 24
-            5_000,
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            name: venueName("Too Many Hours"),
+            venueType: 1,
+            capacity: 100,
+            operatingHours: 25,
+            multiplierBps: 5_000,
+          })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -168,15 +162,14 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId),
-            authority.publicKey,
-            venueName("Zero Mult"),
-            1,
-            100,
-            8,
-            0, // invalid
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            name: venueName("Zero Mult"),
+            venueType: 1,
+            capacity: 100,
+            operatingHours: 8,
+            multiplierBps: 0,
+          })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -196,15 +189,14 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId),
-            authority.publicKey,
-            venueName("Unauthorized"),
-            1,
-            100,
-            8,
-            5_000,
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            name: venueName("Unauthorized"),
+            venueType: 1,
+            capacity: 100,
+            operatingHours: 8,
+            multiplierBps: 5_000,
+          })
           .accounts({ authority: fakeAuthority.publicKey })
           .signers([fakeAuthority])
           .rpc();
@@ -218,27 +210,28 @@ describe("kollect venue", () => {
       const venueId = nextVenueId();
 
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(venueId),
-          authority.publicKey,
-          venueName("Original"),
-          1,
-          100,
-          8,
-          5_000,
-        )
+        .registerVenue(new anchor.BN(venueId), {
+          venueAuthority: authority.publicKey,
+          name: venueName("Original"),
+          venueType: 1,
+          capacity: 100,
+          operatingHours: 8,
+          multiplierBps: 5_000,
+        })
         .rpc();
 
       try {
         await kollect.methods
           .registerVenue(
             new anchor.BN(venueId), // same ID
-            authority.publicKey,
-            venueName("Duplicate"),
-            1,
-            100,
-            8,
-            5_000,
+            {
+              venueAuthority: authority.publicKey,
+              name: venueName("Duplicate"),
+              venueType: 1,
+              capacity: 100,
+              operatingHours: 8,
+              multiplierBps: 5_000,
+            },
           )
           .rpc();
         expect.fail("Should have failed");
@@ -260,15 +253,14 @@ describe("kollect venue", () => {
 
       // Use the wallet (platform authority) as venue authority for signing ease
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(venueId),
-          authority.publicKey, // venue authority = wallet
-          venueName("Updateable Venue"),
-          1,
-          200,
-          10,
-          5_000,
-        )
+        .registerVenue(new anchor.BN(venueId), {
+          venueAuthority: authority.publicKey,
+          name: venueName("Updateable Venue"),
+          venueType: 1,
+          capacity: 200,
+          operatingHours: 10,
+          multiplierBps: 5_000,
+        })
         .rpc();
     });
 
@@ -354,15 +346,14 @@ describe("kollect venue", () => {
       const deactVenuePda = deriveVenuePda(deactVenueId, kollect.programId);
 
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(deactVenueId),
-          authority.publicKey,
-          venueName("Deact Venue"),
-          1,
-          100,
-          8,
-          5_000,
-        )
+        .registerVenue(new anchor.BN(deactVenueId), {
+          venueAuthority: authority.publicKey,
+          name: venueName("Deact Venue"),
+          venueType: 1,
+          capacity: 100,
+          operatingHours: 8,
+          multiplierBps: 5_000,
+        })
         .rpc();
 
       await kollect.methods
@@ -396,15 +387,14 @@ describe("kollect venue", () => {
       venuePda = deriveVenuePda(venueId, kollect.programId);
 
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(venueId),
-          authority.publicKey,
-          venueName("Multiplier Venue"),
-          2,
-          150,
-          12,
-          5_000,
-        )
+        .registerVenue(new anchor.BN(venueId), {
+          venueAuthority: authority.publicKey,
+          name: venueName("Multiplier Venue"),
+          venueType: 2,
+          capacity: 150,
+          operatingHours: 12,
+          multiplierBps: 5_000,
+        })
         .rpc();
     });
 
@@ -454,15 +444,14 @@ describe("kollect venue", () => {
       venuePda = deriveVenuePda(venueId, kollect.programId);
 
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(venueId),
-          authority.publicKey,
-          venueName("Deactivation Target"),
-          1,
-          100,
-          8,
-          5_000,
-        )
+        .registerVenue(new anchor.BN(venueId), {
+          venueAuthority: authority.publicKey,
+          name: venueName("Deactivation Target"),
+          venueType: 1,
+          capacity: 100,
+          operatingHours: 8,
+          multiplierBps: 5_000,
+        })
         .rpc();
     });
 
@@ -496,15 +485,14 @@ describe("kollect venue", () => {
       const activeVenuePda = deriveVenuePda(activeVenueId, kollect.programId);
 
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(activeVenueId),
-          authority.publicKey,
-          venueName("Auth Test Venue"),
-          1,
-          100,
-          8,
-          5_000,
-        )
+        .registerVenue(new anchor.BN(activeVenueId), {
+          venueAuthority: authority.publicKey,
+          name: venueName("Auth Test Venue"),
+          venueType: 1,
+          capacity: 100,
+          operatingHours: 8,
+          multiplierBps: 5_000,
+        })
         .rpc();
 
       const fakeAuth = Keypair.generate();

@@ -53,17 +53,16 @@ describe("kollect playback & settlement", () => {
       await kollect.account.venueAccount.fetch(venuePda);
     } catch {
       await kollect.methods
-        .registerVenue(
-          new anchor.BN(venueId),
-          authority.publicKey,
-          Array.from(
+        .registerVenue(new anchor.BN(venueId), {
+          venueAuthority: authority.publicKey,
+          name: Array.from(
             Buffer.from("Playback Venue".padEnd(64, "\0")),
           ) as number[],
-          0, // venue_type
-          500, // capacity
-          18, // operating_hours
-          10_000, // multiplier_bps (1x)
-        )
+          venueType: 0,
+          capacity: 500,
+          operatingHours: 18,
+          multiplierBps: 10_000,
+        })
         .rpc();
     }
   });
@@ -172,15 +171,16 @@ describe("kollect playback & settlement", () => {
         await kollect.account.venueAccount.fetch(deactVenuePda);
       } catch {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(deactVenueId),
-            authority.publicKey,
-            Array.from(Buffer.from("DeactVenue".padEnd(64, "\0"))) as number[],
-            1,
-            100,
-            12,
-            10_000,
-          )
+          .registerVenue(new anchor.BN(deactVenueId), {
+            venueAuthority: authority.publicKey,
+            name: Array.from(
+              Buffer.from("DeactVenue".padEnd(64, "\0")),
+            ) as number[],
+            venueType: 1,
+            capacity: 100,
+            operatingHours: 12,
+            multiplierBps: 10_000,
+          })
           .rpc();
       }
 
@@ -251,15 +251,16 @@ describe("kollect playback & settlement", () => {
         await kollect.account.venueAccount.fetch(settlementVenuePda);
       } catch {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(settlementVenueId),
-            authority.publicKey,
-            Array.from(Buffer.from("SettleVenue".padEnd(64, "\0"))) as number[],
-            2,
-            300,
-            20,
-            10_000,
-          )
+          .registerVenue(new anchor.BN(settlementVenueId), {
+            venueAuthority: authority.publicKey,
+            name: Array.from(
+              Buffer.from("SettleVenue".padEnd(64, "\0")),
+            ) as number[],
+            venueType: 2,
+            capacity: 300,
+            operatingHours: 20,
+            multiplierBps: 10_000,
+          })
           .rpc();
       }
 

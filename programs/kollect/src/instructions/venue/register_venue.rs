@@ -6,6 +6,16 @@ use crate::events::VenueRegistered;
 use crate::state::{PlatformConfig, VenueAccount};
 use crate::utils::seeds::{PLATFORM_CONFIG_SEED, VENUE_SEED};
 
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct RegisterVenueParams {
+    pub venue_authority: Pubkey,
+    pub name: [u8; MAX_VENUE_NAME_LENGTH],
+    pub venue_type: u8,
+    pub capacity: u32,
+    pub operating_hours: u8,
+    pub multiplier_bps: u16,
+}
+
 #[derive(Accounts)]
 #[instruction(venue_id: u64)]
 pub struct RegisterVenue<'info> {
@@ -34,34 +44,29 @@ pub struct RegisterVenue<'info> {
 pub fn handler(
     ctx: Context<RegisterVenue>,
     venue_id: u64,
-    venue_authority: Pubkey,
-    name: [u8; MAX_VENUE_NAME_LENGTH],
-    venue_type: u8,
-    capacity: u32,
-    operating_hours: u8,
-    multiplier_bps: u16,
+    params: RegisterVenueParams,
 ) -> Result<()> {
     require!(
-        VenueAccount::is_valid_venue_type(venue_type),
+        VenueAccount::is_valid_venue_type(params.venue_type),
         KollectError::InvalidVenueType
     );
-    require!(capacity > 0, KollectError::InvalidCapacity);
+    require!(params.capacity > 0, KollectError::InvalidCapacity);
     require!(
-        operating_hours > 0 && operating_hours <= MAX_OPERATING_HOURS,
+        params.operating_hours > 0 && params.operating_hours <= MAX_OPERATING_HOURS,
         KollectError::InvalidOperatingHours
     );
-    require!(multiplier_bps > 0, KollectError::InvalidMultiplier);
+    require!(params.multiplier_bps > 0, KollectError::InvalidMultiplier);
 
     let clock = Clock::get()?;
     let venue = &mut ctx.accounts.venue;
 
     venue.venue_id = venue_id;
-    venue.authority = venue_authority;
-    venue.name = name;
-    venue.venue_type = venue_type;
-    venue.capacity = capacity;
-    venue.operating_hours = operating_hours;
-    venue.multiplier_bps = multiplier_bps;
+    venue.authority = params.venue_authority;
+    venue.name = params.name;
+    venue.venue_type = params.venue_type;
+    venue.capacity = params.capacity;
+    venue.operating_hours = params.operating_hours;
+    venue.multiplier_bps = params.multiplier_bps;
     venue.is_active = true;
     venue.total_commitments = 0;
     venue.registered_at = clock.unix_timestamp;
@@ -71,9 +76,9 @@ pub fn handler(
     emit!(VenueRegistered {
         venue: venue.key(),
         venue_id,
-        authority: venue_authority,
-        venue_type,
-        capacity,
+        authority: params.venue_authority,
+        venue_type: params.venue_type,
+        capacity: params.capacity,
         registered_at: venue.registered_at,
     });
 

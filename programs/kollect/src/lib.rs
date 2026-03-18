@@ -40,10 +40,7 @@ pub mod kollect {
         instructions::platform::update_platform_config::handler(ctx, params)
     }
 
-    pub fn withdraw_platform_fees(
-        ctx: Context<WithdrawPlatformFees>,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn withdraw_platform_fees(ctx: Context<WithdrawPlatformFees>, amount: u64) -> Result<()> {
         instructions::platform::withdraw_platform_fees::handler(ctx, amount)
     }
 
@@ -89,29 +86,12 @@ pub mod kollect {
     pub fn register_venue(
         ctx: Context<RegisterVenue>,
         venue_id: u64,
-        venue_authority: Pubkey,
-        name: [u8; 64],
-        venue_type: u8,
-        capacity: u32,
-        operating_hours: u8,
-        multiplier_bps: u16,
+        params: RegisterVenueParams,
     ) -> Result<()> {
-        instructions::venue::register_venue::handler(
-            ctx,
-            venue_id,
-            venue_authority,
-            name,
-            venue_type,
-            capacity,
-            operating_hours,
-            multiplier_bps,
-        )
+        instructions::venue::register_venue::handler(ctx, venue_id, params)
     }
 
-    pub fn update_venue(
-        ctx: Context<UpdateVenue>,
-        params: UpdateVenueParams,
-    ) -> Result<()> {
+    pub fn update_venue(ctx: Context<UpdateVenue>, params: UpdateVenueParams) -> Result<()> {
         instructions::venue::update_venue::handler(ctx, params)
     }
 
