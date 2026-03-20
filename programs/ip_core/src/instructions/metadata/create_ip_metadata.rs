@@ -38,7 +38,7 @@ pub struct CreateIpMetadata<'info> {
 
     /// The current owner entity of the IP.
     #[account(
-        seeds = [ENTITY_SEED, owner_entity.creator.as_ref(), &owner_entity.handle],
+        seeds = [ENTITY_SEED, owner_entity.creator.as_ref(), &owner_entity.index.to_le_bytes()],
         bump = owner_entity.bump
     )]
     pub owner_entity: Account<'info, Entity>,

@@ -19,14 +19,14 @@ pub struct TransferIp<'info> {
 
     /// The current owner entity.
     #[account(
-        seeds = [ENTITY_SEED, current_owner_entity.creator.as_ref(), &current_owner_entity.handle],
+        seeds = [ENTITY_SEED, current_owner_entity.creator.as_ref(), &current_owner_entity.index.to_le_bytes()],
         bump = current_owner_entity.bump
     )]
     pub current_owner_entity: Account<'info, Entity>,
 
     /// The new owner entity.
     #[account(
-        seeds = [ENTITY_SEED, new_owner_entity.creator.as_ref(), &new_owner_entity.handle],
+        seeds = [ENTITY_SEED, new_owner_entity.creator.as_ref(), &new_owner_entity.index.to_le_bytes()],
         bump = new_owner_entity.bump
     )]
     pub new_owner_entity: Account<'info, Entity>,

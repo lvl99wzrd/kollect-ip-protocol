@@ -22,7 +22,7 @@ pub struct CreateIp<'info> {
 
     /// The entity registering this IP.
     #[account(
-        seeds = [ENTITY_SEED, registrant_entity.creator.as_ref(), &registrant_entity.handle],
+        seeds = [ENTITY_SEED, registrant_entity.creator.as_ref(), &registrant_entity.index.to_le_bytes()],
         bump = registrant_entity.bump
     )]
     pub registrant_entity: Account<'info, Entity>,

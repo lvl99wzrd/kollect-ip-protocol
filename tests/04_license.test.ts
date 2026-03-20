@@ -9,7 +9,7 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { padBytes } from "../utils/helper";
+import { padBytes, deriveEntityPda, getEntityCount } from "../utils/helper";
 
 describe("license", () => {
   const provider = anchor.AnchorProvider.env();
@@ -111,18 +111,18 @@ describe("license", () => {
     }
 
     // Create entity
-    const handle = padBytes("lic_owner", 32);
-    [entityPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("entity"),
-        creator.publicKey.toBuffer(),
-        Buffer.from(handle),
-      ],
+    const entityIndex = await getEntityCount(ipCoreProgram, creator.publicKey);
+    [entityPda] = deriveEntityPda(
       ipCoreProgram.programId,
+      creator.publicKey,
+      entityIndex,
     );
 
     try {
-      await ipCoreProgram.methods.createEntity(handle).rpc();
+      await ipCoreProgram.methods
+        .createEntity()
+        .accountsPartial({ entity: entityPda })
+        .rpc();
     } catch {
       // Already created
     }
@@ -305,18 +305,18 @@ describe("license", () => {
 
     it("fails with wrong authority", async () => {
       // Create another entity
-      const otherHandle = padBytes("other_lic", 32);
-      const [otherEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(otherHandle),
-        ],
+      const otherIndex = await getEntityCount(ipCoreProgram, creator.publicKey);
+      const [otherEntityPda] = deriveEntityPda(
         ipCoreProgram.programId,
+        creator.publicKey,
+        otherIndex,
       );
 
       try {
-        await ipCoreProgram.methods.createEntity(otherHandle).rpc();
+        await ipCoreProgram.methods
+          .createEntity()
+          .accountsPartial({ entity: otherEntityPda })
+          .rpc();
       } catch {
         // Already exists
       }
@@ -343,18 +343,21 @@ describe("license", () => {
 
     before(async () => {
       // Create grantee entity
-      const granteeHandle = padBytes("grantee", 32);
-      [granteeEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(granteeHandle),
-        ],
+      const granteeIndex = await getEntityCount(
+        ipCoreProgram,
+        creator.publicKey,
+      );
+      [granteeEntityPda] = deriveEntityPda(
         ipCoreProgram.programId,
+        creator.publicKey,
+        granteeIndex,
       );
 
       try {
-        await ipCoreProgram.methods.createEntity(granteeHandle).rpc();
+        await ipCoreProgram.methods
+          .createEntity()
+          .accountsPartial({ entity: granteeEntityPda })
+          .rpc();
       } catch {
         // Already exists
       }
@@ -414,18 +417,21 @@ describe("license", () => {
 
     it("creates a license grant with expiration", async () => {
       // Create another grantee for this test
-      const granteeHandle2 = padBytes("grantee2", 32);
-      const [granteeEntity2Pda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(granteeHandle2),
-        ],
+      const granteeIndex2 = await getEntityCount(
+        ipCoreProgram,
+        creator.publicKey,
+      );
+      const [granteeEntity2Pda] = deriveEntityPda(
         ipCoreProgram.programId,
+        creator.publicKey,
+        granteeIndex2,
       );
 
       try {
-        await ipCoreProgram.methods.createEntity(granteeHandle2).rpc();
+        await ipCoreProgram.methods
+          .createEntity()
+          .accountsPartial({ entity: granteeEntity2Pda })
+          .rpc();
       } catch {
         // Already exists
       }
@@ -481,18 +487,21 @@ describe("license", () => {
 
     it("fails without controller signature", async () => {
       // Create another grantee
-      const granteeHandle3 = padBytes("grantee3", 32);
-      const [granteeEntity3Pda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(granteeHandle3),
-        ],
+      const granteeIndex3 = await getEntityCount(
+        ipCoreProgram,
+        creator.publicKey,
+      );
+      const [granteeEntity3Pda] = deriveEntityPda(
         ipCoreProgram.programId,
+        creator.publicKey,
+        granteeIndex3,
       );
 
       try {
-        await ipCoreProgram.methods.createEntity(granteeHandle3).rpc();
+        await ipCoreProgram.methods
+          .createEntity()
+          .accountsPartial({ entity: granteeEntity3Pda })
+          .rpc();
       } catch {
         // Already exists
       }
@@ -523,18 +532,21 @@ describe("license", () => {
 
     before(async () => {
       // Create a grantee specifically for revocation test
-      const revokeGranteeHandle = padBytes("revoke_grant", 32);
-      [revokeGranteeEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(revokeGranteeHandle),
-        ],
+      const revokeIndex = await getEntityCount(
+        ipCoreProgram,
+        creator.publicKey,
+      );
+      [revokeGranteeEntityPda] = deriveEntityPda(
         ipCoreProgram.programId,
+        creator.publicKey,
+        revokeIndex,
       );
 
       try {
-        await ipCoreProgram.methods.createEntity(revokeGranteeHandle).rpc();
+        await ipCoreProgram.methods
+          .createEntity()
+          .accountsPartial({ entity: revokeGranteeEntityPda })
+          .rpc();
       } catch {
         // Already exists
       }
@@ -590,18 +602,21 @@ describe("license", () => {
     it("fails without controller signature", async () => {
       const fakeController = Keypair.generate();
       // Create another grant to revoke
-      const revokeHandle2 = padBytes("revoke2", 32);
-      const [revokeEntity2Pda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(revokeHandle2),
-        ],
+      const revokeIndex2 = await getEntityCount(
+        ipCoreProgram,
+        creator.publicKey,
+      );
+      const [revokeEntity2Pda] = deriveEntityPda(
         ipCoreProgram.programId,
+        creator.publicKey,
+        revokeIndex2,
       );
 
       try {
-        await ipCoreProgram.methods.createEntity(revokeHandle2).rpc();
+        await ipCoreProgram.methods
+          .createEntity()
+          .accountsPartial({ entity: revokeEntity2Pda })
+          .rpc();
       } catch {
         // Already exists
       }

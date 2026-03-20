@@ -9,7 +9,7 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { padBytes } from "../utils/helper";
+import { padBytes, deriveEntityPda, getEntityCount } from "../utils/helper";
 
 describe("ip_core derivative with license", () => {
   const provider = anchor.AnchorProvider.env();
@@ -113,18 +113,18 @@ describe("ip_core derivative with license", () => {
     }
 
     // Create entity
-    const handle = padBytes("deriv_owner2", 32);
-    [entityPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("entity"),
-        creator.publicKey.toBuffer(),
-        Buffer.from(handle),
-      ],
+    const entityIndex = await getEntityCount(ipCoreProgram, creator.publicKey);
+    [entityPda] = deriveEntityPda(
       ipCoreProgram.programId,
+      creator.publicKey,
+      entityIndex,
     );
 
     try {
-      await ipCoreProgram.methods.createEntity(handle).rpc();
+      await ipCoreProgram.methods
+        .createEntity()
+        .accountsPartial({ entity: entityPda })
+        .rpc();
     } catch {
       // Already created
     }
@@ -620,18 +620,21 @@ describe("ip_core derivative with license", () => {
         .rpc();
 
       // Create a new entity for expired grant
-      const expiredGranteeHandle = padBytes("expired_grant", 32);
-      const [expiredGranteeEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(expiredGranteeHandle),
-        ],
+      const expiredGranteeIndex = await getEntityCount(
+        ipCoreProgram,
+        creator.publicKey,
+      );
+      const [expiredGranteeEntityPda] = deriveEntityPda(
         ipCoreProgram.programId,
+        creator.publicKey,
+        expiredGranteeIndex,
       );
 
       try {
-        await ipCoreProgram.methods.createEntity(expiredGranteeHandle).rpc();
+        await ipCoreProgram.methods
+          .createEntity()
+          .accountsPartial({ entity: expiredGranteeEntityPda })
+          .rpc();
       } catch {
         // Already exists
       }

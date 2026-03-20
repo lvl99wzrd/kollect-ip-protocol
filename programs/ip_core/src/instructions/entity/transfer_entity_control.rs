@@ -11,7 +11,7 @@ pub struct TransferEntityControl<'info> {
     /// The entity to update.
     #[account(
         mut,
-        seeds = [ENTITY_SEED, entity.creator.as_ref(), &entity.handle],
+        seeds = [ENTITY_SEED, entity.creator.as_ref(), &entity.index.to_le_bytes()],
         bump = entity.bump
     )]
     pub entity: Account<'info, Entity>,

@@ -11,7 +11,7 @@ import { expect } from "chai";
 import * as crypto from "crypto";
 import entitySchemaJson from "../utils/metadata-schema/entity.metadata.v1.json";
 import ipSchemaJson from "../utils/metadata-schema/ip.metadata.v1.json";
-import { padBytes } from "../utils/helper";
+import { padBytes, deriveEntityPda, getEntityCount } from "../utils/helper";
 
 describe("ip_core metadata", () => {
   const provider = anchor.AnchorProvider.env();
@@ -84,20 +84,20 @@ describe("ip_core metadata", () => {
   describe("create_entity_metadata", () => {
     let entityPda: PublicKey;
     let schemaPda: PublicKey;
-    const handle = padBytes("metadata_entity", 32);
 
     before(async () => {
       // Create entity
-      [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
+      const index = await getEntityCount(program, creator.publicKey);
+      [entityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        index,
       );
 
-      await program.methods.createEntity(handle).rpc();
+      await program.methods
+        .createEntity()
+        .accountsPartial({ entity: entityPda })
+        .rpc();
 
       // Create schema using IP metadata schema
       const schemaId = padBytes(ipSchemaJson.schema.schema_id, 32);
@@ -235,18 +235,18 @@ describe("ip_core metadata", () => {
       }
 
       // --- entity ---
-      const handle = padBytes("ip_meta_entity", 32);
-      [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
+      const entityIndex = await getEntityCount(program, creator.publicKey);
+      [entityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        entityIndex,
       );
 
       try {
-        await program.methods.createEntity(handle).rpc();
+        await program.methods
+          .createEntity()
+          .accountsPartial({ entity: entityPda })
+          .rpc();
       } catch {
         // already exists
       }
@@ -370,18 +370,15 @@ describe("ip_core metadata", () => {
     });
 
     it("creates entity + entity metadata in one transaction", async () => {
-      const handle = padBytes("combo_entity", 32);
       const metadataHash = randomHash();
       const metadataCid = padBytes("QmComboEntityMeta", 96);
 
-      // Derive entity PDA
-      const [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
+      // Derive entity PDA using current counter value
+      const entityIndex = await getEntityCount(program, creator.publicKey);
+      const [entityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        entityIndex,
       );
 
       // Entity starts with current_metadata_revision = 0,
@@ -399,7 +396,8 @@ describe("ip_core metadata", () => {
 
       // Build both instructions
       const createEntityIx = await program.methods
-        .createEntity(handle)
+        .createEntity()
+        .accountsPartial({ entity: entityPda })
         .instruction();
 
       const createMetadataIx = await program.methods
@@ -474,18 +472,18 @@ describe("ip_core metadata", () => {
       }
 
       // --- entity (reuse or create) ---
-      const handle = padBytes("combo_ip_entity", 32);
-      const [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
+      const entityIndex = await getEntityCount(program, creator.publicKey);
+      const [entityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        entityIndex,
       );
 
       try {
-        await program.methods.createEntity(handle).rpc();
+        await program.methods
+          .createEntity()
+          .accountsPartial({ entity: entityPda })
+          .rpc();
       } catch {
         // already exists
       }

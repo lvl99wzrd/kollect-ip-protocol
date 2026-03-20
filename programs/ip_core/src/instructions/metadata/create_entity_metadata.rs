@@ -30,7 +30,7 @@ pub struct CreateEntityMetadata<'info> {
     /// The entity to attach metadata to.
     #[account(
         mut,
-        seeds = [ENTITY_SEED, entity.creator.as_ref(), &entity.handle],
+        seeds = [ENTITY_SEED, entity.creator.as_ref(), &entity.index.to_le_bytes()],
         bump = entity.bump
     )]
     pub entity: Account<'info, Entity>,
