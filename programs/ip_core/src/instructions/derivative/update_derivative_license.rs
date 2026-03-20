@@ -29,7 +29,7 @@ pub struct UpdateDerivativeLicense<'info> {
 
     /// The owner entity of the child IP.
     #[account(
-        seeds = [ENTITY_SEED, child_owner_entity.creator.as_ref(), &child_owner_entity.handle],
+        seeds = [ENTITY_SEED, child_owner_entity.creator.as_ref(), &child_owner_entity.index.to_le_bytes()],
         bump = child_owner_entity.bump
     )]
     pub child_owner_entity: Account<'info, Entity>,

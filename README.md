@@ -54,8 +54,8 @@ The protocol is currently deployed on **Solana Devnet**. Both programs share the
 
 | Program     | Program ID                                     | Explorer                                                                                                                   |
 | ----------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| **ip_core** | `8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G` | [View on Solana Explorer](https://explorer.solana.com/address/8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G?cluster=devnet) |
-| **license** | `E4mqwDTFiwaq1KsfkepcMRcwWDXoLzEAREZgjQcMZpFj` | [View on Solana Explorer](https://explorer.solana.com/address/E4mqwDTFiwaq1KsfkepcMRcwWDXoLzEAREZgjQcMZpFj?cluster=devnet) |
+| **ip_core** | `ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap` | [View on Solana Explorer](https://explorer.solana.com/address/ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap?cluster=devnet) |
+| **license** | `8iA7LYmvxr3SL8ZzTAZtbXfcGGjMpNQz116oeSiAEt1Q` | [View on Solana Explorer](https://explorer.solana.com/address/8iA7LYmvxr3SL8ZzTAZtbXfcGGjMpNQz116oeSiAEt1Q?cluster=devnet) |
 
 > **Note:** These are devnet deployments for development and testing. Mainnet addresses will be published upon mainnet launch.
 
@@ -63,7 +63,7 @@ The protocol is currently deployed on **Solana Devnet**. Both programs share the
 
 ### ip_core
 
-**Program ID:** `8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G`
+**Program ID:** `ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap`
 
 The core registry program handles IP registration, entity management, and derivative tracking.
 
@@ -122,7 +122,7 @@ The core registry program handles IP registration, entity management, and deriva
 
 ### license
 
-**Program ID:** `E4mqwDTFiwaq1KsfkepcMRcwWDXoLzEAREZgjQcMZpFj`
+**Program ID:** `8iA7LYmvxr3SL8ZzTAZtbXfcGGjMpNQz116oeSiAEt1Q`
 
 The license program implements a two-layer licensing model for IP usage rights.
 

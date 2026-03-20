@@ -29,7 +29,6 @@ Defined in shared constants module:
 - MAX_SCHEMA_ID_LENGTH = 32
 - MAX_VERSION_LENGTH = 16
 - MAX_CID_LENGTH = 96
-- MAX_HANDLE_LENGTH = 32
 
 Copilot must never invent dynamic sizing.
 
@@ -44,10 +43,6 @@ Define explicit errors:
 - Unauthorized
 - InvalidAuthority
 - EntityNotInitialized
-- InvalidHandle
-- HandleTooLong
-- EmptyHandle
-- HandleAlreadyExists
 - MetadataSchemaNotFound
 - InvalidMetadataRevision
 - IPAlreadyExists
@@ -154,7 +149,7 @@ A minimal "FreeToUse" license MAY contain:
 | initialize_treasury     | ProtocolTreasury                             |
 | withdraw_treasury       | SPL token account (authority = treasury PDA) |
 | create_metadata_schema  | MetadataSchema                               |
-| create_entity           | Entity                                       |
+| create_entity           | Entity, CreatorEntityCounter                 |
 | transfer_entity_control | Entity                                       |
 | create_entity_metadata  | MetadataAccount, Entity                      |
 | create_ip               | IPAccount                                    |
@@ -343,19 +338,18 @@ No delete.
 ## PDA Seeds
 
 ```
-["entity", creator_pubkey, handle]
+["entity", creator_pubkey, index_le_bytes]
 ```
 
 Where:
 
-- handle must be lowercase alphanumeric and underscores only
-- length ∈ [1, 32]
-- must match regex: ^[a-z0-9_]{1,32}$
+- index is a u64 sequential index derived from CreatorEntityCounter
+- stored as 8-byte little-endian
 
 ## Fields
 
 - creator: Pubkey
-- handle: [u8; MAX_HANDLE_LENGTH]
+- index: u64
 - controller: Pubkey
 - current_metadata_revision: u64
 - created_at: i64
@@ -366,10 +360,10 @@ Where:
 
 - controller must be a signer for all entity mutations.
 - controller can be any Pubkey (EOA or external multisig PDA such as Squads).
-- handle immutable
+- index immutable
 - creator immutable
 - created_at immutable
-- handle unique per creator (PDA uniqueness enforced)
+- index unique per creator (PDA uniqueness enforced)
 
 ## Authorization
 
@@ -383,12 +377,13 @@ Multisig is delegated to external protocols (e.g., Squads). The controller field
 
 ### create_entity
 
+- Initializes CreatorEntityCounter (via init_if_needed) if not yet created.
+- Derives entity index from counter.entity_count.
 - Derives PDA from:
   ```
-  ["entity", creator_pubkey, handle]
+  ["entity", creator_pubkey, index_le_bytes]
   ```
-- Fails if PDA already exists.
-- Validates handle format.
+- Increments counter.entity_count.
 - Sets controller = creator.
 - Sets current_metadata_revision = 0.
 - Sets created_at and updated_at.
@@ -398,10 +393,33 @@ Multisig is delegated to external protocols (e.g., Squads). The controller field
 - Requires current controller signature.
 - Updates controller to new_controller.
 - Updates updated_at.
-- Cannot modify handle.
+- Cannot modify index.
 - Cannot modify creator.
 
 No delete allowed.
+
+---
+
+# 5a. CreatorEntityCounter
+
+## PDA Seeds
+
+```
+["entity_counter", creator_pubkey]
+```
+
+## Fields
+
+- creator: Pubkey
+- entity_count: u64
+- bump: u8
+
+## Invariants
+
+- One per creator wallet.
+- Initialized on first create_entity call via init_if_needed.
+- entity_count is monotonically increasing.
+- entity_count must only be incremented by create_entity.
 
 ---
 

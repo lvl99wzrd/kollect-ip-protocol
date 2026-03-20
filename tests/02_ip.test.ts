@@ -9,7 +9,12 @@ import {
 } from "@solana/spl-token";
 import { expect } from "chai";
 import * as path from "path";
-import { padBytes, hashFile } from "../utils/helper";
+import {
+  padBytes,
+  hashFile,
+  deriveEntityPda,
+  getEntityCount,
+} from "../utils/helper";
 
 describe("ip_core ip", () => {
   const provider = anchor.AnchorProvider.env();
@@ -129,27 +134,17 @@ describe("ip_core ip", () => {
     }
 
     // Create entity
-    const handle = padBytes("ip_owner", 32);
-    [entityPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("entity"),
-        creator.publicKey.toBuffer(),
-        Buffer.from(handle),
-      ],
+    const entityIndex = await getEntityCount(program, creator.publicKey);
+    [entityPda] = deriveEntityPda(
       program.programId,
+      creator.publicKey,
+      entityIndex,
     );
 
-    let entityExists = false;
-    try {
-      await program.account.entity.fetch(entityPda);
-      entityExists = true;
-    } catch {
-      // Entity doesn't exist
-    }
-
-    if (!entityExists) {
-      await program.methods.createEntity(handle).rpc();
-    }
+    await program.methods
+      .createEntity()
+      .accountsPartial({ entity: entityPda })
+      .rpc();
   });
 
   describe("create_ip", () => {
@@ -255,21 +250,20 @@ describe("ip_core ip", () => {
         .rpc();
 
       // Create a different entity
-      const differentHandle = padBytes("different_ip", 32);
-      const [differentEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(differentHandle),
-        ],
+      const differentEntityIndex = await getEntityCount(
+        program,
+        creator.publicKey,
+      );
+      const [differentEntityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        differentEntityIndex,
       );
 
-      try {
-        await program.methods.createEntity(differentHandle).rpc();
-      } catch {
-        // Already exists
-      }
+      await program.methods
+        .createEntity()
+        .accountsPartial({ entity: differentEntityPda })
+        .rpc();
 
       // Different entity can create IP with the same content hash
       const [ipPdaEntityA] = PublicKey.findProgramAddressSync(
@@ -334,21 +328,17 @@ describe("ip_core ip", () => {
         .rpc();
 
       // Create new owner entity
-      const newHandle = padBytes("new_owner", 32);
-      [newOwnerEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(newHandle),
-        ],
+      const newOwnerIndex = await getEntityCount(program, creator.publicKey);
+      [newOwnerEntityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        newOwnerIndex,
       );
 
-      try {
-        await program.methods.createEntity(newHandle).rpc();
-      } catch {
-        // Already exists
-      }
+      await program.methods
+        .createEntity()
+        .accountsPartial({ entity: newOwnerEntityPda })
+        .rpc();
     });
 
     it("transfers IP ownership", async () => {

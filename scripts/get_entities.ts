@@ -21,12 +21,6 @@ import { PublicKey } from "@solana/web3.js";
 import { IpCore } from "../target/types/ip_core";
 
 /**
- * Decodes a fixed-length byte array to a trimmed UTF-8 string.
- */
-const decodeBytes = (bytes: number[] | Uint8Array): string =>
-  Buffer.from(bytes).toString("utf-8").replace(/\0/g, "");
-
-/**
  * Returns a Solana Explorer address URL for the given cluster.
  */
 const explorerUrl = (address: string, cluster: string): string =>
@@ -41,7 +35,7 @@ function printEntity(
   pubkey: PublicKey,
   entity: {
     creator: PublicKey;
-    handle: number[];
+    index: anchor.BN;
     controller: PublicKey;
     currentMetadataRevision: anchor.BN;
     createdAt: anchor.BN;
@@ -49,11 +43,11 @@ function printEntity(
     bump: number;
   },
   cluster: string,
-  index?: number,
+  idx?: number,
 ): void {
-  const prefix = index !== undefined ? `[${index + 1}] ` : "";
+  const prefix = idx !== undefined ? `[${idx + 1}] ` : "";
   console.log(`\n${prefix}PDA: ${pubkey.toBase58()}`);
-  console.log(`  Handle:             ${decodeBytes(entity.handle)}`);
+  console.log(`  Index:              ${entity.index.toString()}`);
   console.log(`  Creator:            ${entity.creator.toBase58()}`);
   console.log(`  Controller:         ${entity.controller.toBase58()}`);
   console.log(

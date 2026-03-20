@@ -7,10 +7,10 @@ pub mod instructions;
 pub mod state;
 pub mod utils;
 
-use constants::{MAX_CID_LENGTH, MAX_HANDLE_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
+use constants::{MAX_CID_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
 use instructions::*;
 
-declare_id!("8Yv28aduM7K63b7HVuXPj6fYW8pLagHm8AuJCYVxvV6G");
+declare_id!("ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap");
 
 #[program]
 pub mod ip_core {
@@ -51,11 +51,8 @@ pub mod ip_core {
     // ===== Entity Instructions =====
 
     /// Create a new entity.
-    pub fn create_entity(
-        ctx: Context<CreateEntity>,
-        handle: [u8; MAX_HANDLE_LENGTH],
-    ) -> Result<()> {
-        instructions::entity::create_entity::handler(ctx, handle)
+    pub fn create_entity(ctx: Context<CreateEntity>) -> Result<()> {
+        instructions::entity::create_entity::handler(ctx)
     }
 
     /// Transfer entity control to a new controller.

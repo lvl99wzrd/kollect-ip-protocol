@@ -43,8 +43,6 @@ All programs must follow:
 - All accounts MUST be PDA-derived.
 - No randomness.
 - No nonce-based identity derivation.
-- No global counters.
-- No auto-increment IDs.
 - No clock-based uniqueness logic.
 
 Account identity must be fully deterministic from seeds.

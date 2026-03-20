@@ -1,8 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{
-    MAX_CID_LENGTH, MAX_HANDLE_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH,
-};
+use crate::constants::{MAX_CID_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
 
 // ===== Protocol Events =====
 
@@ -73,8 +71,8 @@ pub struct EntityCreated {
     pub entity: Pubkey,
     /// The entity creator.
     pub creator: Pubkey,
-    /// The entity handle.
-    pub handle: [u8; MAX_HANDLE_LENGTH],
+    /// The entity index within the creator's wallet.
+    pub index: u64,
     /// The initial controller.
     pub controller: Pubkey,
     /// Creation timestamp.
