@@ -16,7 +16,7 @@ The protocol consists of two independent programs:
 ### Design Philosophy
 
 - **Neutral** — No governance mechanisms or arbitration logic
-- **Deterministic** — All accounts are PDA-derived; no randomness or auto-increment IDs
+- **Deterministic** — All accounts are PDA-derived; no randomness
 - **Minimal** — Records claims without judging authorship truth
 - **Non-economic** — No royalty logic or payment distribution in core
 - **Modular** — Programs do not share mutable state
@@ -69,15 +69,16 @@ The core registry program handles IP registration, entity management, and deriva
 
 #### Account Types
 
-| Account            | PDA Seeds                                 | Description                                              |
-| ------------------ | ----------------------------------------- | -------------------------------------------------------- |
-| `ProtocolConfig`   | `["config"]`                              | Protocol settings, fee configuration, treasury reference |
-| `ProtocolTreasury` | `["treasury"]`                            | Authority over SPL token accounts for fees               |
-| `Entity`           | `["entity", creator, handle]`             | On-chain identity with single controller                 |
-| `IpAccount`        | `["ip", registrant_entity, content_hash]` | IP registration with ownership tracking                  |
-| `MetadataSchema`   | `["metadata_schema", id, version]`        | Defines metadata structure                               |
-| `MetadataAccount`  | `["metadata", type, parent, revision]`    | Versioned metadata for entities/IPs                      |
-| `DerivativeLink`   | `["derivative", parent_ip, child_ip]`     | Links derivative IP to parent with license reference     |
+| Account                | PDA Seeds                                 | Description                                              |
+| ---------------------- | ----------------------------------------- | -------------------------------------------------------- |
+| `ProtocolConfig`       | `["config"]`                              | Protocol settings, fee configuration, treasury reference |
+| `ProtocolTreasury`     | `["treasury"]`                            | Authority over SPL token accounts for fees               |
+| `CreatorEntityCounter` | `["entity_counter", creator]`             | Per-creator sequential entity index counter              |
+| `Entity`               | `["entity", creator, index]`              | On-chain identity with single controller                 |
+| `IpAccount`            | `["ip", registrant_entity, content_hash]` | IP registration with ownership tracking                  |
+| `MetadataSchema`       | `["metadata_schema", id, version]`        | Defines metadata structure                               |
+| `MetadataAccount`      | `["metadata", type, parent, revision]`    | Versioned metadata for entities/IPs                      |
+| `DerivativeLink`       | `["derivative", parent_ip, child_ip]`     | Links derivative IP to parent with license reference     |
 
 #### Instructions
 
@@ -113,7 +114,6 @@ The core registry program handles IP registration, entity management, and deriva
 
 | Constant               | Value | Description                       |
 | ---------------------- | ----- | --------------------------------- |
-| `MAX_HANDLE_LENGTH`    | 32    | Maximum entity handle length      |
 | `MAX_SCHEMA_ID_LENGTH` | 32    | Maximum schema identifier length  |
 | `MAX_VERSION_LENGTH`   | 16    | Maximum version string length     |
 | `MAX_CID_LENGTH`       | 96    | Maximum content identifier length |
