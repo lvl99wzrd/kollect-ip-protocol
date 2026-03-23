@@ -162,7 +162,7 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
           controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
@@ -206,7 +206,7 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
           controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
@@ -218,7 +218,7 @@ describe("ip_core ip", () => {
       try {
         await program.methods
           .createIp(contentHash)
-          .accounts({
+          .accountsPartial({
             registrantEntity: entityPda,
             controller: creator.publicKey,
             treasuryTokenAccount: treasuryTokenAccount,
@@ -241,7 +241,7 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
           controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
@@ -286,7 +286,7 @@ describe("ip_core ip", () => {
       // Create IP with different entity using same content hash - should succeed
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: differentEntityPda,
           controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
@@ -302,6 +302,76 @@ describe("ip_core ip", () => {
       expect(ipB.registrantEntity.toString()).to.equal(
         differentEntityPda.toString(),
       );
+    });
+
+    it("creates an IP without token accounts when fee is 0", async () => {
+      // Set fee to 0
+      await program.methods
+        .updateConfig({
+          newAuthority: null,
+          newTreasury: null,
+          newRegistrationCurrency: null,
+          newRegistrationFee: new anchor.BN(0),
+        })
+        .rpc();
+
+      const contentHash = uniqueHash();
+
+      const [ipPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ip"), entityPda.toBuffer(), Buffer.from(contentHash)],
+        program.programId,
+      );
+
+      await program.methods
+        .createIp(contentHash)
+        .accountsPartial({
+          registrantEntity: entityPda,
+          controller: creator.publicKey,
+          treasuryTokenAccount: null,
+          payerTokenAccount: null,
+          tokenProgram: null,
+        })
+        .rpc();
+
+      const ip = await program.account.ipAccount.fetch(ipPda);
+      expect(ip.registrantEntity.toString()).to.equal(entityPda.toString());
+      expect(ip.currentOwnerEntity.toString()).to.equal(entityPda.toString());
+      expect(ip.currentMetadataRevision.toNumber()).to.equal(0);
+
+      // Restore fee
+      await program.methods
+        .updateConfig({
+          newAuthority: null,
+          newTreasury: null,
+          newRegistrationCurrency: null,
+          newRegistrationFee: new anchor.BN(1_000_000),
+        })
+        .rpc();
+    });
+
+    it("fails when fee > 0 but token accounts are missing", async () => {
+      const contentHash = uniqueHash();
+
+      try {
+        await program.methods
+          .createIp(contentHash)
+          .accountsPartial({
+            registrantEntity: entityPda,
+            controller: creator.publicKey,
+            treasuryTokenAccount: null,
+            payerTokenAccount: null,
+            tokenProgram: null,
+          })
+          .rpc();
+
+        expect.fail(
+          "Expected transaction to fail when token accounts are missing with non-zero fee",
+        );
+      } catch (error: any) {
+        expect(error.toString()).to.include(
+          "Token accounts are required when registration fee is non-zero",
+        );
+      }
     });
   });
 
@@ -319,7 +389,7 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
           controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
@@ -349,7 +419,7 @@ describe("ip_core ip", () => {
 
       await program.methods
         .transferIp()
-        .accounts({
+        .accountsPartial({
           ip: ipPda,
           currentOwnerEntity: entityPda,
           newOwnerEntity: newOwnerEntityPda,

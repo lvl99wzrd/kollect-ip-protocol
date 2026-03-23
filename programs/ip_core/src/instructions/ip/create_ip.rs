@@ -43,19 +43,21 @@ pub struct CreateIp<'info> {
     pub treasury: Account<'info, ProtocolTreasury>,
 
     /// Treasury's token account to receive the registration fee.
+    /// Optional when registration fee is 0.
     #[account(
         mut,
         constraint = treasury_token_account.mint == config.registration_currency @ IpCoreError::InvalidTokenMint,
         constraint = treasury_token_account.owner == treasury.key() @ IpCoreError::InvalidTreasuryAuthority
     )]
-    pub treasury_token_account: Account<'info, TokenAccount>,
+    pub treasury_token_account: Option<Account<'info, TokenAccount>>,
 
     /// Payer's token account to pay the registration fee.
+    /// Optional when registration fee is 0.
     #[account(
         mut,
         constraint = payer_token_account.mint == config.registration_currency @ IpCoreError::InvalidTokenMint
     )]
-    pub payer_token_account: Account<'info, TokenAccount>,
+    pub payer_token_account: Option<Account<'info, TokenAccount>>,
 
     /// The entity controller (must sign).
     #[account(
@@ -68,7 +70,8 @@ pub struct CreateIp<'info> {
     pub payer: Signer<'info>,
 
     /// SPL Token program.
-    pub token_program: Program<'info, Token>,
+    /// Optional when registration fee is 0.
+    pub token_program: Option<Program<'info, Token>>,
 
     /// System program for account creation.
     pub system_program: Program<'info, System>,
@@ -92,12 +95,28 @@ pub fn handler(ctx: Context<CreateIp>, content_hash: [u8; 32]) -> Result<()> {
 
     // Transfer registration fee BEFORE initializing the IP account
     if config.registration_fee > 0 {
+        let payer_token_account = ctx
+            .accounts
+            .payer_token_account
+            .as_ref()
+            .ok_or(error!(IpCoreError::MissingTokenAccount))?;
+        let treasury_token_account = ctx
+            .accounts
+            .treasury_token_account
+            .as_ref()
+            .ok_or(error!(IpCoreError::MissingTokenAccount))?;
+        let token_program = ctx
+            .accounts
+            .token_program
+            .as_ref()
+            .ok_or(error!(IpCoreError::MissingTokenProgram))?;
+
         transfer(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.payer_token_account.to_account_info(),
-                    to: ctx.accounts.treasury_token_account.to_account_info(),
+                    from: payer_token_account.to_account_info(),
+                    to: treasury_token_account.to_account_info(),
                     authority: ctx.accounts.payer.to_account_info(),
                 },
             ),
