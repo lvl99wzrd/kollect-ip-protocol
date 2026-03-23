@@ -82,4 +82,12 @@ pub enum IpCoreError {
     /// Grantee does not match the child owner entity.
     #[msg("Grantee does not match the child owner entity")]
     InvalidGrantee,
+
+    /// Token accounts are required when registration fee is non-zero.
+    #[msg("Token accounts are required when registration fee is non-zero")]
+    MissingTokenAccount,
+
+    /// Token program is required when registration fee is non-zero.
+    #[msg("Token program is required when registration fee is non-zero")]
+    MissingTokenProgram,
 }
