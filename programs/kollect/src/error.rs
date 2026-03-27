@@ -36,8 +36,10 @@ pub enum KollectError {
     PlaybackAlreadySubmitted,
     #[msg("Day timestamp is not aligned to UTC midnight")]
     InvalidDayTimestamp,
-    #[msg("Settlement period has not ended")]
-    SettlementPeriodNotEnded,
+    #[msg("Play count mismatch between distributions and commitments")]
+    PlayCountMismatch,
+    #[msg("Settlement timestamp is too far from current clock")]
+    InvalidSettlementTimestamp,
     #[msg("Commitment already settled")]
     CommitmentAlreadySettled,
     #[msg("No commitments to settle")]
@@ -74,4 +76,20 @@ pub enum KollectError {
     InsufficientPayment,
     #[msg("Invalid currency for payment")]
     InvalidCurrency,
+    #[msg("Invalid royalty split PDA")]
+    InvalidRoyaltySplitPda,
+    #[msg("Maximum license types reached for this IP")]
+    MaxLicenseTypesReached,
+    #[msg("Invalid grant duration")]
+    InvalidGrantDuration,
+    #[msg("Invalid share basis points (exceeds 10000)")]
+    InvalidShareBps,
+    #[msg("IP is already active")]
+    IpAlreadyActive,
+    #[msg("Venue is already active")]
+    VenueAlreadyActive,
+    #[msg("Insufficient venue token balance for settlement")]
+    InsufficientVenueBalance,
+    #[msg("Invalid or empty content identifier")]
+    InvalidCid,
 }

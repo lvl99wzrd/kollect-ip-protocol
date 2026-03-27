@@ -6,7 +6,7 @@ import {
   getPrograms,
   derivePlatformConfigPda,
   deriveVenuePda,
-  venueName,
+  venueCid,
 } from "./setup";
 
 describe("kollect venue", () => {
@@ -26,19 +26,16 @@ describe("kollect venue", () => {
   });
 
   describe("register_venue", () => {
-    it("registers a venue with valid params", async () => {
+    it("registers a venue with valid CID", async () => {
       const venueId = nextVenueId();
       const venueAuthority = Keypair.generate();
       const venuePda = deriveVenuePda(venueId, kollect.programId);
-      const name = venueName("Test Club Alpha");
+      const cid = venueCid("QmTestClubAlpha123");
 
       await kollect.methods
         .registerVenue(new anchor.BN(venueId), {
           venueAuthority: venueAuthority.publicKey,
-          name,
-          venueType: 1,
-          capacity: 500,
-          operatingHours: 12,
+          cid,
           multiplierBps: 10_000,
         })
         .rpc();
@@ -48,112 +45,28 @@ describe("kollect venue", () => {
       expect(venue.authority.toString()).to.equal(
         venueAuthority.publicKey.toString(),
       );
-      expect(venue.venueType).to.equal(1);
-      expect(venue.capacity).to.equal(500);
-      expect(venue.operatingHours).to.equal(12);
+      expect(Buffer.from(venue.cid).slice(0, 18).toString()).to.include(
+        "QmTestClubAlpha123",
+      );
       expect(venue.multiplierBps).to.equal(10_000);
       expect(venue.isActive).to.be.true;
       expect(venue.totalCommitments.toNumber()).to.equal(0);
     });
 
-    it("registers venues with all valid venue types (0-5)", async () => {
-      for (let vt = 0; vt <= 5; vt++) {
-        const venueId = nextVenueId();
-        const venuePda = deriveVenuePda(venueId, kollect.programId);
-
-        await kollect.methods
-          .registerVenue(new anchor.BN(venueId), {
-            venueAuthority: authority.publicKey,
-            name: venueName(`Venue Type ${vt}`),
-            venueType: vt,
-            capacity: 100,
-            operatingHours: 8,
-            multiplierBps: 5_000,
-          })
-          .rpc();
-
-        const venue = await kollect.account.venueAccount.fetch(venuePda);
-        expect(venue.venueType).to.equal(vt);
-      }
-    });
-
-    it("fails with invalid venue_type (> 5)", async () => {
+    it("fails with empty CID (all zeros)", async () => {
       const venueId = nextVenueId();
 
       try {
         await kollect.methods
           .registerVenue(new anchor.BN(venueId), {
             venueAuthority: authority.publicKey,
-            name: venueName("Bad Type"),
-            venueType: 6,
-            capacity: 100,
-            operatingHours: 8,
-            multiplierBps: 5_000,
+            cid: new Array(96).fill(0),
+            multiplierBps: 10_000,
           })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
-        expect(err.toString()).to.include("InvalidVenueType");
-      }
-    });
-
-    it("fails with capacity = 0", async () => {
-      const venueId = nextVenueId();
-
-      try {
-        await kollect.methods
-          .registerVenue(new anchor.BN(venueId), {
-            venueAuthority: authority.publicKey,
-            name: venueName("Zero Cap"),
-            venueType: 1,
-            capacity: 0,
-            operatingHours: 8,
-            multiplierBps: 5_000,
-          })
-          .rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("InvalidCapacity");
-      }
-    });
-
-    it("fails with operating_hours = 0", async () => {
-      const venueId = nextVenueId();
-
-      try {
-        await kollect.methods
-          .registerVenue(new anchor.BN(venueId), {
-            venueAuthority: authority.publicKey,
-            name: venueName("Zero Hours"),
-            venueType: 1,
-            capacity: 100,
-            operatingHours: 0,
-            multiplierBps: 5_000,
-          })
-          .rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("InvalidOperatingHours");
-      }
-    });
-
-    it("fails with operating_hours > 24", async () => {
-      const venueId = nextVenueId();
-
-      try {
-        await kollect.methods
-          .registerVenue(new anchor.BN(venueId), {
-            venueAuthority: authority.publicKey,
-            name: venueName("Too Many Hours"),
-            venueType: 1,
-            capacity: 100,
-            operatingHours: 25,
-            multiplierBps: 5_000,
-          })
-          .rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("InvalidOperatingHours");
+        expect(err.toString()).to.include("InvalidCid");
       }
     });
 
@@ -164,10 +77,7 @@ describe("kollect venue", () => {
         await kollect.methods
           .registerVenue(new anchor.BN(venueId), {
             venueAuthority: authority.publicKey,
-            name: venueName("Zero Mult"),
-            venueType: 1,
-            capacity: 100,
-            operatingHours: 8,
+            cid: venueCid("QmValidCid"),
             multiplierBps: 0,
           })
           .rpc();
@@ -191,10 +101,7 @@ describe("kollect venue", () => {
         await kollect.methods
           .registerVenue(new anchor.BN(venueId), {
             venueAuthority: authority.publicKey,
-            name: venueName("Unauthorized"),
-            venueType: 1,
-            capacity: 100,
-            operatingHours: 8,
+            cid: venueCid("QmUnauthorized"),
             multiplierBps: 5_000,
           })
           .accounts({ authority: fakeAuthority.publicKey })
@@ -212,27 +119,18 @@ describe("kollect venue", () => {
       await kollect.methods
         .registerVenue(new anchor.BN(venueId), {
           venueAuthority: authority.publicKey,
-          name: venueName("Original"),
-          venueType: 1,
-          capacity: 100,
-          operatingHours: 8,
+          cid: venueCid("QmOriginal"),
           multiplierBps: 5_000,
         })
         .rpc();
 
       try {
         await kollect.methods
-          .registerVenue(
-            new anchor.BN(venueId), // same ID
-            {
-              venueAuthority: authority.publicKey,
-              name: venueName("Duplicate"),
-              venueType: 1,
-              capacity: 100,
-              operatingHours: 8,
-              multiplierBps: 5_000,
-            },
-          )
+          .registerVenue(new anchor.BN(venueId), {
+            venueAuthority: authority.publicKey,
+            cid: venueCid("QmDuplicate"),
+            multiplierBps: 5_000,
+          })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -244,75 +142,50 @@ describe("kollect venue", () => {
   describe("update_venue", () => {
     let venueId: number;
     let venuePda: PublicKey;
-    let venueAuth: Keypair;
 
     before(async () => {
       venueId = nextVenueId();
-      venueAuth = Keypair.generate();
       venuePda = deriveVenuePda(venueId, kollect.programId);
 
-      // Use the wallet (platform authority) as venue authority for signing ease
       await kollect.methods
         .registerVenue(new anchor.BN(venueId), {
           venueAuthority: authority.publicKey,
-          name: venueName("Updateable Venue"),
-          venueType: 1,
-          capacity: 200,
-          operatingHours: 10,
+          cid: venueCid("QmUpdateableVenue"),
           multiplierBps: 5_000,
         })
         .rpc();
     });
 
-    it("updates venue capacity", async () => {
+    it("updates venue CID", async () => {
+      const newCid = venueCid("QmNewVenueCid456");
+
       await kollect.methods
         .updateVenue({
           newAuthority: null,
-          newVenueType: null,
-          newCapacity: 300,
-          newOperatingHours: null,
+          newCid,
         })
         .accountsPartial({ venue: venuePda })
         .rpc();
 
       const venue = await kollect.account.venueAccount.fetch(venuePda);
-      expect(venue.capacity).to.equal(300);
-      // Other fields unchanged
-      expect(venue.venueType).to.equal(1);
-      expect(venue.operatingHours).to.equal(10);
+      expect(Buffer.from(venue.cid).slice(0, 16).toString()).to.include(
+        "QmNewVenueCid456",
+      );
     });
 
-    it("updates venue type", async () => {
+    it("no-op update (null params) preserves state", async () => {
+      const before = await kollect.account.venueAccount.fetch(venuePda);
+
       await kollect.methods
-        .updateVenue({
-          newAuthority: null,
-          newVenueType: 3,
-          newCapacity: null,
-          newOperatingHours: null,
-        })
+        .updateVenue({ newAuthority: null, newCid: null })
         .accountsPartial({ venue: venuePda })
         .rpc();
 
-      const venue = await kollect.account.venueAccount.fetch(venuePda);
-      expect(venue.venueType).to.equal(3);
+      const after = await kollect.account.venueAccount.fetch(venuePda);
+      expect(Buffer.from(after.cid)).to.deep.equal(Buffer.from(before.cid));
     });
 
-    it("updates operating hours", async () => {
-      await kollect.methods
-        .updateVenue({
-          newAuthority: null,
-          newVenueType: null,
-          newCapacity: null,
-          newOperatingHours: 18,
-        })
-        .accountsPartial({ venue: venuePda })
-        .rpc();
-
-      const venue = await kollect.account.venueAccount.fetch(venuePda);
-      expect(venue.operatingHours).to.equal(18);
-    });
-
-    it("fails with wrong authority (non-venue-authority)", async () => {
+    it("fails with wrong venue authority", async () => {
       const fakeAuth = Keypair.generate();
       const sig = await provider.connection.requestAirdrop(
         fakeAuth.publicKey,
@@ -322,12 +195,7 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .updateVenue({
-            newAuthority: null,
-            newVenueType: null,
-            newCapacity: 999,
-            newOperatingHours: null,
-          })
+          .updateVenue({ newAuthority: null, newCid: null })
           .accountsPartial({
             authority: fakeAuth.publicKey,
             venue: venuePda,
@@ -337,43 +205,6 @@ describe("kollect venue", () => {
         expect.fail("Should have failed");
       } catch (err) {
         expect(err.toString()).to.include("InvalidAuthority");
-      }
-    });
-
-    it("fails on deactivated venue", async () => {
-      // Create a venue, deactivate it, then try to update
-      const deactVenueId = nextVenueId();
-      const deactVenuePda = deriveVenuePda(deactVenueId, kollect.programId);
-
-      await kollect.methods
-        .registerVenue(new anchor.BN(deactVenueId), {
-          venueAuthority: authority.publicKey,
-          name: venueName("Deact Venue"),
-          venueType: 1,
-          capacity: 100,
-          operatingHours: 8,
-          multiplierBps: 5_000,
-        })
-        .rpc();
-
-      await kollect.methods
-        .deactivateVenue()
-        .accountsPartial({ venue: deactVenuePda })
-        .rpc();
-
-      try {
-        await kollect.methods
-          .updateVenue({
-            newAuthority: null,
-            newVenueType: null,
-            newCapacity: 999,
-            newOperatingHours: null,
-          })
-          .accountsPartial({ venue: deactVenuePda })
-          .rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("VenueNotActive");
       }
     });
   });
@@ -389,10 +220,7 @@ describe("kollect venue", () => {
       await kollect.methods
         .registerVenue(new anchor.BN(venueId), {
           venueAuthority: authority.publicKey,
-          name: venueName("Multiplier Venue"),
-          venueType: 2,
-          capacity: 150,
-          operatingHours: 12,
+          cid: venueCid("QmMultiplierVenue"),
           multiplierBps: 5_000,
         })
         .rpc();
@@ -446,26 +274,23 @@ describe("kollect venue", () => {
       await kollect.methods
         .registerVenue(new anchor.BN(venueId), {
           venueAuthority: authority.publicKey,
-          name: venueName("Deactivation Target"),
-          venueType: 1,
-          capacity: 100,
-          operatingHours: 8,
+          cid: venueCid("QmDeacTarget"),
           multiplierBps: 5_000,
         })
         .rpc();
     });
 
     it("deactivates a venue", async () => {
-      const venueBefore = await kollect.account.venueAccount.fetch(venuePda);
-      expect(venueBefore.isActive).to.be.true;
+      const before = await kollect.account.venueAccount.fetch(venuePda);
+      expect(before.isActive).to.be.true;
 
       await kollect.methods
         .deactivateVenue()
         .accountsPartial({ venue: venuePda })
         .rpc();
 
-      const venueAfter = await kollect.account.venueAccount.fetch(venuePda);
-      expect(venueAfter.isActive).to.be.false;
+      const after = await kollect.account.venueAccount.fetch(venuePda);
+      expect(after.isActive).to.be.false;
     });
 
     it("fails if already deactivated", async () => {
@@ -479,20 +304,70 @@ describe("kollect venue", () => {
         expect(err.toString()).to.include("VenueNotActive");
       }
     });
+  });
 
-    it("fails with non-platform authority", async () => {
-      const activeVenueId = nextVenueId();
-      const activeVenuePda = deriveVenuePda(activeVenueId, kollect.programId);
+  describe("reactivate_venue", () => {
+    let venueId: number;
+    let venuePda: PublicKey;
+
+    before(async () => {
+      venueId = nextVenueId();
+      venuePda = deriveVenuePda(venueId, kollect.programId);
 
       await kollect.methods
-        .registerVenue(new anchor.BN(activeVenueId), {
+        .registerVenue(new anchor.BN(venueId), {
           venueAuthority: authority.publicKey,
-          name: venueName("Auth Test Venue"),
-          venueType: 1,
-          capacity: 100,
-          operatingHours: 8,
+          cid: venueCid("QmReactivateTarget"),
           multiplierBps: 5_000,
         })
+        .rpc();
+
+      await kollect.methods
+        .deactivateVenue()
+        .accountsPartial({ venue: venuePda })
+        .rpc();
+    });
+
+    it("reactivates an inactive venue", async () => {
+      const before = await kollect.account.venueAccount.fetch(venuePda);
+      expect(before.isActive).to.be.false;
+
+      await kollect.methods
+        .reactivateVenue()
+        .accountsPartial({ venue: venuePda })
+        .rpc();
+
+      const after = await kollect.account.venueAccount.fetch(venuePda);
+      expect(after.isActive).to.be.true;
+    });
+
+    it("fails if venue is already active", async () => {
+      try {
+        await kollect.methods
+          .reactivateVenue()
+          .accountsPartial({ venue: venuePda })
+          .rpc();
+        expect.fail("Should have failed");
+      } catch (err) {
+        expect(err.toString()).to.include("VenueAlreadyActive");
+      }
+    });
+
+    it("fails with non-platform authority", async () => {
+      const inactiveId = nextVenueId();
+      const inactivePda = deriveVenuePda(inactiveId, kollect.programId);
+
+      await kollect.methods
+        .registerVenue(new anchor.BN(inactiveId), {
+          venueAuthority: authority.publicKey,
+          cid: venueCid("QmAuthTestReact"),
+          multiplierBps: 5_000,
+        })
+        .rpc();
+
+      await kollect.methods
+        .deactivateVenue()
+        .accountsPartial({ venue: inactivePda })
         .rpc();
 
       const fakeAuth = Keypair.generate();
@@ -504,10 +379,10 @@ describe("kollect venue", () => {
 
       try {
         await kollect.methods
-          .deactivateVenue()
+          .reactivateVenue()
           .accountsPartial({
             authority: fakeAuth.publicKey,
-            venue: activeVenuePda,
+            venue: inactivePda,
           })
           .signers([fakeAuth])
           .rpc();

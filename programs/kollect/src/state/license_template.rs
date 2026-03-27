@@ -9,7 +9,6 @@ pub struct LicenseTemplate {
     pub creator_entity: Pubkey,
     pub template_name: [u8; MAX_TEMPLATE_NAME_LENGTH],
     pub price: u64,
-    pub currency: Pubkey,
     pub max_grants: u16,
     pub current_grants: u16,
     pub grant_duration: i64,
@@ -20,5 +19,6 @@ pub struct LicenseTemplate {
 }
 
 impl LicenseTemplate {
-    pub const SIZE: usize = 8 + 32 + 32 + 32 + MAX_TEMPLATE_NAME_LENGTH + 8 + 32 + 2 + 2 + 8 + 1 + 8 + 8 + 1;
+    pub const SIZE: usize =
+        8 + 32 + 32 + 32 + MAX_TEMPLATE_NAME_LENGTH + 8 + 2 + 2 + 8 + 1 + 8 + 8 + 1;
 }

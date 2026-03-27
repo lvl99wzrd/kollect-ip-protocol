@@ -3,12 +3,18 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::error::KollectError;
 use crate::events::EntityEarningsWithdrawn;
-use crate::state::EntityTreasury;
-use crate::utils::seeds::ENTITY_TREASURY_SEED;
+use crate::state::{EntityTreasury, PlatformConfig};
+use crate::utils::seeds::{ENTITY_TREASURY_SEED, PLATFORM_CONFIG_SEED};
 
 #[derive(Accounts)]
 pub struct WithdrawEntityEarnings<'info> {
     pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [PLATFORM_CONFIG_SEED],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, PlatformConfig>,
 
     #[account(
         mut,
@@ -21,6 +27,7 @@ pub struct WithdrawEntityEarnings<'info> {
     #[account(
         mut,
         token::authority = entity_treasury,
+        token::mint = config.currency,
     )]
     pub treasury_token_account: Account<'info, TokenAccount>,
 

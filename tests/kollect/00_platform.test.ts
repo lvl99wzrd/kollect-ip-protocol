@@ -51,21 +51,26 @@ describe("kollect platform", () => {
         expect(config.authority.toString()).to.equal(
           authority.publicKey.toString(),
         );
-        settlementMint = config.settlementCurrency;
+        settlementMint = config.currency;
         return;
       }
 
       const basePricePerPlay = new anchor.BN(100_000);
       const platformFeeBps = 500; // 5%
-      const maxDerivatives = 10;
+      const maxDerivativesDepth = 3;
+      const maxLicenseTypes = 10;
 
       await kollect.methods
         .initializePlatform(
           basePricePerPlay,
           platformFeeBps,
           settlementMint,
-          maxDerivatives,
+          maxDerivativesDepth,
+          maxLicenseTypes,
         )
+        .accounts({
+          currencyMint: settlementMint,
+        })
         .rpc();
 
       const config = await kollect.account.platformConfig.fetch(configPda);
@@ -74,10 +79,9 @@ describe("kollect platform", () => {
       );
       expect(config.platformFeeBps).to.equal(platformFeeBps);
       expect(config.basePricePerPlay.toNumber()).to.equal(100_000);
-      expect(config.settlementCurrency.toString()).to.equal(
-        settlementMint.toString(),
-      );
-      expect(config.maxDerivatives).to.equal(maxDerivatives);
+      expect(config.currency.toString()).to.equal(settlementMint.toString());
+      expect(config.maxDerivativesDepth).to.equal(maxDerivativesDepth);
+      expect(config.maxLicenseTypes).to.equal(maxLicenseTypes);
       expect(config.treasury.toString()).to.equal(treasuryPda.toString());
 
       const treasury = await kollect.account.platformTreasury.fetch(
@@ -92,7 +96,16 @@ describe("kollect platform", () => {
     it("fails if already initialized (PDA collision)", async () => {
       try {
         await kollect.methods
-          .initializePlatform(new anchor.BN(100_000), 500, settlementMint, 10)
+          .initializePlatform(
+            new anchor.BN(100_000),
+            500,
+            settlementMint,
+            3,
+            10,
+          )
+          .accounts({
+            currencyMint: settlementMint,
+          })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -104,15 +117,15 @@ describe("kollect platform", () => {
   describe("update_platform_config", () => {
     it("updates base_price_per_play", async () => {
       const config = await kollect.account.platformConfig.fetch(configPda);
-      settlementMint = config.settlementCurrency;
+      settlementMint = config.currency;
 
       await kollect.methods
         .updatePlatformConfig({
           newAuthority: null,
           newBasePricePerPlay: new anchor.BN(200_000),
           newPlatformFeeBps: null,
-          newSettlementCurrency: null,
-          newMaxDerivatives: null,
+          newMaxDerivativesDepth: null,
+          newMaxLicenseTypes: null,
         })
         .rpc();
 
@@ -120,9 +133,7 @@ describe("kollect platform", () => {
       expect(updated.basePricePerPlay.toNumber()).to.equal(200_000);
       // Other fields unchanged
       expect(updated.platformFeeBps).to.equal(config.platformFeeBps);
-      expect(updated.settlementCurrency.toString()).to.equal(
-        config.settlementCurrency.toString(),
-      );
+      expect(updated.currency.toString()).to.equal(config.currency.toString());
     });
 
     it("updates platform_fee_bps", async () => {
@@ -131,8 +142,8 @@ describe("kollect platform", () => {
           newAuthority: null,
           newBasePricePerPlay: null,
           newPlatformFeeBps: 1000, // 10%
-          newSettlementCurrency: null,
-          newMaxDerivatives: null,
+          newMaxDerivativesDepth: null,
+          newMaxLicenseTypes: null,
         })
         .rpc();
 
@@ -140,19 +151,19 @@ describe("kollect platform", () => {
       expect(updated.platformFeeBps).to.equal(1000);
     });
 
-    it("updates max_derivatives", async () => {
+    it("updates max_derivatives_depth", async () => {
       await kollect.methods
         .updatePlatformConfig({
           newAuthority: null,
           newBasePricePerPlay: null,
           newPlatformFeeBps: null,
-          newSettlementCurrency: null,
-          newMaxDerivatives: 20,
+          newMaxDerivativesDepth: 2,
+          newMaxLicenseTypes: null,
         })
         .rpc();
 
       const updated = await kollect.account.platformConfig.fetch(configPda);
-      expect(updated.maxDerivatives).to.equal(20);
+      expect(updated.maxDerivativesDepth).to.equal(2);
     });
 
     it("fails with wrong authority", async () => {
@@ -171,8 +182,8 @@ describe("kollect platform", () => {
             newAuthority: null,
             newBasePricePerPlay: new anchor.BN(999),
             newPlatformFeeBps: null,
-            newSettlementCurrency: null,
-            newMaxDerivatives: null,
+            newMaxDerivativesDepth: null,
+            newMaxLicenseTypes: null,
           })
           .accounts({ authority: fakeAuthority.publicKey })
           .signers([fakeAuthority])
@@ -190,7 +201,7 @@ describe("kollect platform", () => {
 
     before(async () => {
       const config = await kollect.account.platformConfig.fetch(configPda);
-      settlementMint = config.settlementCurrency;
+      settlementMint = config.currency;
 
       // Create treasury token account (owned by PlatformTreasury PDA)
       const treasuryAta = await getOrCreateAssociatedTokenAccount(

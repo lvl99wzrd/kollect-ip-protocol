@@ -57,6 +57,7 @@ pub fn handler(
     let policy = &mut ctx.accounts.royalty_policy;
 
     if let Some(share_bps) = params.new_derivative_share_bps {
+        require!(share_bps <= 10_000, KollectError::InvalidShareBps);
         policy.derivative_share_bps = share_bps;
     }
     if let Some(allow_remix) = params.new_allow_remix {
@@ -84,6 +85,8 @@ pub fn handler(
         allow_remix: policy.allow_remix,
         allow_cover: policy.allow_cover,
         allow_sample: policy.allow_sample,
+        attribution_required: policy.attribution_required,
+        commercial_use: policy.commercial_use,
         updated_at: policy.updated_at,
     });
 

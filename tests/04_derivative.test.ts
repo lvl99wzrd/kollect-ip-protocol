@@ -5,6 +5,7 @@ import { Kollect } from "../target/types/kollect";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import {
   createMint,
+  getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
@@ -72,9 +73,12 @@ describe("ip_core derivative with kollect license", () => {
       await kollectProgram.account.ipConfig.fetch(ipcPda);
     } catch {
       await kollectProgram.methods
-        .onboardIp(null, false)
-        .accountsPartial({ entity: entityPda, ipAccount: ipPda })
-        .remainingAccounts([signerMeta(creator.publicKey)])
+        .onboardIp(null)
+        .accountsPartial({
+          entity: entityPda,
+          ipAccount: ipPda,
+          currencyMint: mint,
+        })
         .rpc();
     }
 
@@ -93,13 +97,23 @@ describe("ip_core derivative with kollect license", () => {
       .createLicenseTemplate(
         tplName,
         new anchor.BN(0), // price = 0 (free)
-        mint,
         0, // max_grants = 0 (unlimited)
         new anchor.BN(grantDuration), // grant_duration
       )
       .accountsPartial({ entity: entityPda, ipConfig: ipcPda })
       .remainingAccounts([signerMeta(creator.publicKey)])
       .rpc();
+
+    // Derive IP treasury token account (created by onboardIp)
+    const [ipTreasury] = PublicKey.findProgramAddressSync(
+      [Buffer.from("ip_treasury"), ipPda.toBuffer()],
+      kollectProgram.programId,
+    );
+    const ipTreasuryTokenAccount = getAssociatedTokenAddressSync(
+      mint,
+      ipTreasury,
+      true,
+    );
 
     // Purchase license (creates LicenseGrant)
     const [grantPda] = PublicKey.findProgramAddressSync(
@@ -119,7 +133,7 @@ describe("ip_core derivative with kollect license", () => {
         license: licPda,
         payerTokenAccount,
         platformTokenAccount,
-        ipOwnerTokenAccount,
+        ipTreasuryTokenAccount,
       })
       .remainingAccounts([signerMeta(creator.publicKey)])
       .rpc();
@@ -273,7 +287,10 @@ describe("ip_core derivative with kollect license", () => {
       await kollectProgram.account.platformConfig.fetch(platformConfigPda);
     } catch {
       await kollectProgram.methods
-        .initializePlatform(new anchor.BN(100_000), 500, mint, 10)
+        .initializePlatform(new anchor.BN(100_000), 500, mint, 3, 10)
+        .accounts({
+          currencyMint: mint,
+        })
         .rpc();
     }
 
@@ -283,7 +300,7 @@ describe("ip_core derivative with kollect license", () => {
     } catch {
       await kollectProgram.methods
         .initializeEntityTreasury(creator.publicKey)
-        .accountsPartial({ entity: entityPda })
+        .accountsPartial({ entity: entityPda, currencyMint: mint })
         .remainingAccounts([signerMeta(creator.publicKey)])
         .rpc();
     }

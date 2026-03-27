@@ -34,7 +34,7 @@ describe("kollect entity treasury", () => {
 
     // Ensure platform is initialized (depends on 00_platform running first)
     const config = await kollect.account.platformConfig.fetch(configPda);
-    settlementMint = config.settlementCurrency;
+    settlementMint = config.currency;
 
     // Create a test entity
     const entity = await createTestEntity("entity_treasury_test");
@@ -48,6 +48,7 @@ describe("kollect entity treasury", () => {
         .initializeEntityTreasury(authority.publicKey)
         .accounts({
           entity: entityPda,
+          currencyMint: settlementMint,
         })
         .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
@@ -69,6 +70,7 @@ describe("kollect entity treasury", () => {
           .initializeEntityTreasury(authority.publicKey)
           .accounts({
             entity: entityPda,
+            currencyMint: settlementMint,
           })
           .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
@@ -94,6 +96,7 @@ describe("kollect entity treasury", () => {
           .initializeEntityTreasury(authority.publicKey)
           .accounts({
             entity: testEntity.entityPda,
+            currencyMint: settlementMint,
           })
           .remainingAccounts([signerMeta(fakeController.publicKey)])
           .signers([fakeController])

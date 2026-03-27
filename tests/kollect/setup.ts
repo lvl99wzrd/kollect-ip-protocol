@@ -54,6 +54,8 @@ export const IP_CORE_TREASURY_SEED = Buffer.from("treasury");
 export const randomHash = (): number[] =>
   Array.from(Keypair.generate().publicKey.toBytes());
 
+export const venueCid = (text: string): number[] => padBytes(text, 96);
+
 export const venueName = (name: string): number[] => padBytes(name, 64);
 
 export const templateName = (name: string): number[] => padBytes(name, 32);
@@ -236,12 +238,13 @@ export async function createTestIp(entityPda: PublicKey): Promise<TestIp> {
 
   await ipCore.methods
     .createIp(contentHash)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .accounts({
       registrantEntity: entityPda,
       controller: creator.publicKey,
       treasuryTokenAccount: state.treasuryTokenAccount,
       payerTokenAccount: state.payerTokenAccount,
-    })
+    } as any)
     .rpc();
 
   return { ipPda, contentHash };
@@ -321,10 +324,16 @@ export function derivePlaybackPda(
 export function deriveSettlementPda(
   venuePda: PublicKey,
   periodStart: number,
+  settledAt: number,
   kollectProgramId: PublicKey,
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [SETTLEMENT_SEED, venuePda.toBuffer(), i64Buffer(periodStart)],
+    [
+      SETTLEMENT_SEED,
+      venuePda.toBuffer(),
+      i64Buffer(periodStart),
+      i64Buffer(settledAt),
+    ],
     kollectProgramId,
   )[0];
 }

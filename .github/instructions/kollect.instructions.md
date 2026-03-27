@@ -57,17 +57,15 @@ Platform-wide configuration. One instance per deployment.
 
 **PDA Seeds:** `["platform_config"]`
 
-| Field               | Type   | Mutability | Description                                           |
-| ------------------- | ------ | ---------- | ----------------------------------------------------- |
-| authority           | Pubkey | mutable    | Platform admin, can update config and submit playback |
-| platform_fee_bps    | u16    | mutable    | Platform fee in basis points (e.g. 500 = 5%)          |
-| base_price_per_play | u64    | mutable    | Default price per play in lamports/tokens             |
-| settlement_currency | Pubkey | mutable    | SPL token mint for settlements                        |
-| max_derivatives     | u16    | mutable    | Max derivative licenses per IP on this platform       |
-| treasury            | Pubkey | mutable    | Platform treasury PDA reference                       |
-| bump                | u8     | immutable  | PDA bump                                              |
-
-Settlement period is **weekly** (platform-wide, hardcoded for POC — 7 days from period start).
+| Field               | Type   | Mutability | Description                                                                |
+| ------------------- | ------ | ---------- | -------------------------------------------------------------------------- |
+| authority           | Pubkey | mutable    | Platform admin, can update config and submit playback                      |
+| platform_fee_bps    | u16    | mutable    | Platform fee in basis points (e.g. 500 = 5%)                               |
+| base_price_per_play | u64    | mutable    | Default price per play in lamports/tokens                                  |
+| currency            | Pubkey | mutable    | SPL token mint for all on-chain payments (license purchases + settlements) |
+| max_derivatives     | u16    | mutable    | Max derivative licenses per IP on this platform                            |
+| treasury            | Pubkey | mutable    | Platform treasury PDA reference                                            |
+| bump                | u8     | immutable  | PDA bump                                                                   |
 
 ### 3.2 PlatformTreasury
 
@@ -81,9 +79,11 @@ Platform-level fee collection.
 | config    | Pubkey | immutable  | Reference to PlatformConfig |
 | bump      | u8     | immutable  | PDA bump                    |
 
+An Associated Token Account (ATA) for `config.currency` is created during `initialize_platform`.
+
 ### 3.3 IpConfig
 
-Per-IP onboarding on the kollect platform. Not all `ip_core` IPs are registered here — only those the Entity (IP owner) decides to onboard.
+Per-IP onboarding on the kollect platform. Not all `ip_core` IPs are registered here — only those approved by the **platform authority** (off-chain review gate). The platform authority calls `onboard_ip`.
 
 **PDA Seeds:** `["ip_config", ip_account.key()]`
 
@@ -111,6 +111,8 @@ Per-entity treasury for collecting royalties.
 | total_withdrawn | u64    | mutable    | Cumulative withdrawals      |
 | bump            | u8     | immutable  | PDA bump                    |
 
+An Associated Token Account (ATA) for `config.currency` is created during `initialize_entity_treasury`.
+
 ### 3.5 IpTreasury
 
 Per-IP treasury for collecting playback royalties.
@@ -125,6 +127,8 @@ Per-IP treasury for collecting playback royalties.
 | total_earned    | u64    | mutable    | Cumulative earnings            |
 | total_settled   | u64    | mutable    | Cumulative settled to entity   |
 | bump            | u8     | immutable  | PDA bump                       |
+
+An Associated Token Account (ATA) for `config.currency` is created during `onboard_ip`.
 
 ### 3.6 VenueAccount
 
@@ -169,9 +173,11 @@ Daily playback hash commitment from a venue. Only the **platform authority** may
 
 ### 3.8 SettlementRecord
 
-Record of a weekly settlement batch for a venue.
+Record of a settlement batch for a venue. Multiple partial settlements are allowed per period via unique `settled_at` timestamps.
 
-**PDA Seeds:** `["settlement", venue.key(), &period_start.to_le_bytes()]`
+**PDA Seeds:** `["settlement", venue.key(), &period_start.to_le_bytes(), &settled_at.to_le_bytes()]`
+
+`settled_at` is client-supplied and validated to be within 30 seconds of the on-chain clock. This enables multiple partial settlements for the same `period_start`.
 
 | Field            | Type     | Mutability | Description                                   |
 | ---------------- | -------- | ---------- | --------------------------------------------- |
@@ -214,7 +220,6 @@ Programmable license terms created by an IP owner for an onboarded IP. This is t
 | creator_entity | Pubkey   | immutable  | Entity that created this template (IP owner) |
 | template_name  | [u8; 32] | immutable  | Unique name for this template                |
 | price          | u64      | mutable    | Price to purchase a grant (0 = free)         |
-| currency       | Pubkey   | mutable    | SPL token mint for purchase price            |
 | max_grants     | u16      | mutable    | Max grants issuable (0 = unlimited)          |
 | current_grants | u16      | mutable    | Number of grants currently issued            |
 | grant_duration | i64      | mutable    | Duration in seconds (0 = perpetual)          |
@@ -224,6 +229,8 @@ Programmable license terms created by an IP owner for an onboarded IP. This is t
 | bump           | u8       | immutable  | PDA bump                                     |
 
 `current_grants` is a bounded counter (capped by `max_grants`). It is NOT used for PDA derivation.
+
+All license purchase payments use `PlatformConfig.currency` — the template does not carry its own currency.
 
 ### 3.10 License (Thin Interface Account)
 
@@ -338,16 +345,17 @@ During settlement, the system walks the RoyaltySplit chain for each IP:
 
 | Instruction      | Accounts Mutated                                   | Authority                                        |
 | ---------------- | -------------------------------------------------- | ------------------------------------------------ |
-| onboard_ip       | IpConfig, IpTreasury, (RoyaltySplit if derivative) | Entity controller(s) — cross-program read Entity |
+| onboard_ip       | IpConfig, IpTreasury, (RoyaltySplit if derivative) | platform authority                               |
 | update_ip_config | IpConfig                                           | Entity controller(s) — cross-program read Entity |
-| deactivate_ip    | IpConfig                                           | Entity controller(s) — cross-program read Entity |
+| deactivate_ip    | IpConfig                                           | platform authority                               |
 
 ### Entity Treasury
 
-| Instruction                | Accounts Mutated | Authority                                        |
-| -------------------------- | ---------------- | ------------------------------------------------ |
-| initialize_entity_treasury | EntityTreasury   | Entity controller(s) — cross-program read Entity |
-| withdraw_entity_earnings   | Token accounts   | treasury.authority                               |
+| Instruction                | Accounts Mutated                           | Authority                                        |
+| -------------------------- | ------------------------------------------ | ------------------------------------------------ |
+| initialize_entity_treasury | EntityTreasury                             | Entity controller(s) — cross-program read Entity |
+| withdraw_entity_earnings   | Token accounts                             | treasury.authority                               |
+| withdraw_ip_treasury       | IpTreasury, EntityTreasury, Token accounts | Entity controller(s) — cross-program read Entity |
 
 ### Venue Management
 
@@ -370,10 +378,10 @@ During settlement, the system walks the RoyaltySplit chain for each IP:
 
 ### Playback & Settlement
 
-| Instruction     | Accounts Mutated                                                                        | Authority          |
-| --------------- | --------------------------------------------------------------------------------------- | ------------------ |
-| submit_playback | PlaybackCommitment, VenueAccount                                                        | platform authority |
-| settle_period   | SettlementRecord, PlaybackCommitments, IpTreasury(s), RoyaltySplit(s), PlatformTreasury | platform authority |
+| Instruction     | Accounts Mutated                                                                        | Authority                                               |
+| --------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| submit_playback | PlaybackCommitment, VenueAccount                                                        | platform authority                                      |
+| settle_period   | SettlementRecord, PlaybackCommitments, IpTreasury(s), RoyaltySplit(s), PlatformTreasury | platform authority + venue authority (co-signer, payer) |
 
 ---
 
@@ -389,9 +397,16 @@ effective_price = (ip_config.price_per_play_override OR platform.base_price_per_
 Settlement amount per IP from `IpDistribution` instruction data:
 
 ```
-gross = distribution.amount  (pre-computed off-chain per IP)
-platform_fee = gross * platform.platform_fee_bps / 10_000
-net_to_ip = gross - platform_fee
+gross = distribution.amount  (pre-computed off-chain per IP, before platform fee)
+platform_fee = sum(all distributions.amount) * platform.platform_fee_bps / 10_000  (computed once on the total)
+net_to_ip = distribution.amount - (distribution.amount's proportional share of platform_fee)
+```
+
+Play count validation:
+
+```
+sum(distributions.plays) == sum(commitments.total_plays)
+total_bill = sum(distributions.amount) + platform_fee  (venue’s total payment)
 ```
 
 Royalty split (if IP is a derivative):
@@ -420,15 +435,23 @@ All arithmetic MUST use checked operations (`checked_mul`, `checked_div`, `check
 ## 6. Settlement Flow
 
 1. **Daily**: Off-chain sniffing device reports playback data to platform backend → platform backend hashes `{ track, count }[]` → platform authority calls `submit_playback` with commitment hash + total play count
-2. **Weekly**: Platform authority calls `settle_period` for a venue + week range
-   - Passes `Vec<IpDistribution>` as instruction data (per-IP breakdown)
-   - Validates all referenced IPs are onboarded and active
-   - Validates `sum(distributions.amount)` matches expected total from commitments
+2. **Settlement** (anytime during or after the week): Platform authority and venue authority co-sign `settle_period` for a venue + period
+   - **Dual-signer model**: Platform authority provides distribution data; venue authority funds the settlement
+   - Passes `period_start: i64`, `settled_at: i64`, and `Vec<IpDistribution>` as instruction data
+   - `settled_at` is client-supplied, validated within 30 seconds of on-chain clock
+   - Multiple partial settlements per period are allowed (each creates a unique `SettlementRecord` via `settled_at` in PDA seeds)
+   - No `period_end` check — venues settle week-to-date at any time
+   - Validates `sum(distributions.plays) == sum(commitments.total_plays)`
    - Computes merkle root of included commitment hashes
-   - For each IP: deducts platform fee, checks RoyaltySplit chain, distributes royalties bottom-to-top
-   - Credits net amounts to each IpTreasury
+   - **Token flow**:
+     a. Platform fee: single transfer from venue’s token account → `PlatformTreasury` ATA
+     b. Per-IP distribution: for each IP in distributions, walk the RoyaltySplit chain (up to `MAX_ROYALTY_CHAIN_DEPTH`=3):
+     - If IP is a derivative: deduct `share_bps` and transfer royalties to origin IP’s `IpTreasury` ATA (recurse upward)
+     - Transfer remaining net to the IP’s own `IpTreasury` ATA
+       c. Update counters: `IpTreasury.total_earned`, `RoyaltySplit.total_distributed`, `PlatformTreasury` balance
    - Marks PlaybackCommitments as settled
    - Creates SettlementRecord
+   - Deactivated IPs may still receive settlement (revenue earned while active is distributable)
 
 ---
 
@@ -453,7 +476,7 @@ Suggested defaults (not enforced on-chain):
 
 ### Creating a License
 
-1. Entity onboards their IP via `onboard_ip`
+1. Platform authority onboards an IP via `onboard_ip` (after off-chain review)
 2. Entity creates a `LicenseTemplate` with terms (price, duration, max grants)
 3. Entity creates a `RoyaltyPolicy` attached to the template (revenue share %, allowed derivative types)
 
@@ -462,7 +485,7 @@ Suggested defaults (not enforced on-chain):
 1. Another Entity calls `purchase_license` referencing a `LicenseTemplate`
 2. Payment (if price > 0):
    - Platform takes `platform_fee_bps` cut → transfers to `PlatformTreasury` token account
-   - Remainder transfers to origin IP's `IpTreasury` token account
+   - Remainder transfers to origin IP's `IpTreasury` token account (updates `IpTreasury.total_earned`)
 3. A thin `LicenseGrant` is created (matching `ip_core`'s `LicenseGrantData` exactly)
    - `LicenseGrant.license` = `License` PDA (the thin account, not the template)
    - `LicenseGrant.expiration` = if template.grant_duration > 0: `now + grant_duration`, else `0`
@@ -482,7 +505,7 @@ Suggested defaults (not enforced on-chain):
    - `License.derivatives_allowed == true`
    - `LicenseGrant.expiration` is 0 or in the future
    - `LicenseGrant.grantee == child_owner_entity.key()`
-3. Grantee onboards the derivative IP on kollect via `onboard_ip`
+3. Grantee onboards the derivative IP on kollect via `onboard_ip` (platform authority initiates after review)
    - If `DerivativeLink` exists in `ip_core` for this IP, `onboard_ip` **automatically creates a `RoyaltySplit`**
    - Requires `DerivativeLink`, `LicenseGrant`, `License`, and `RoyaltyPolicy` as additional inputs
    - `share_bps` is snapshotted from the `RoyaltyPolicy` at onboarding time
@@ -493,10 +516,10 @@ During settlement, for each IP in the `IpDistribution` list:
 
 1. If the IP has a `RoyaltySplit` (it's a derivative):
    - Deduct `share_bps` from its net earnings
-   - Credit the origin IP's `IpTreasury`
+   - Credit the origin IP's `IpTreasury` (updates `IpTreasury.total_earned` and `RoyaltySplit.total_distributed`)
    - Recursively check if origin also has a `RoyaltySplit`
 2. Remaining net goes to the IP's own `IpTreasury`
-3. `IpTreasury` funds can be withdrawn to the `EntityTreasury` by the entity
+3. `IpTreasury` funds can be withdrawn to the `EntityTreasury` by the entity controller via `withdraw_ip_treasury`
 
 ---
 
@@ -512,9 +535,13 @@ During settlement, for each IP in the `IpDistribution` list:
 - All fee/price/royalty arithmetic uses checked operations.
 - `ip_core` accounts are READ-ONLY inputs — never CPI-mutate them.
 - Entity multisig: always cross-program read `Entity` from `ip_core` for current controllers/threshold. Never cache.
-- Settlement period: weekly (hardcoded for POC).
+- Settlement period: weekly boundaries (hardcoded for POC). Payment can occur anytime — no `period_end` wait required. Multiple partial settlements per period allowed.
 - `MAX_ROYALTY_CHAIN_DEPTH` = 3 (hardcoded constant). Settlement will not walk royalty chains deeper than 3 levels.
-- Platform fee (`platform_fee_bps`) applies to both playback settlements and license purchases.
+- Platform fee (`platform_fee_bps`) applies to both playback settlements and license purchases (platform sponsors gas fees).
+- Single currency for POC: all on-chain payments (license purchases + settlements) use `PlatformConfig.currency`.
+- Deactivated IPs can still receive settlement — revenue earned while active is distributable.
+- Associated Token Accounts (ATAs) for the platform currency are created at init time: `initialize_platform`, `initialize_entity_treasury`, `onboard_ip`.
+- `onboard_ip` and `deactivate_ip` are admin-gated (platform authority only). `update_ip_config` remains entity-controller-gated.
 - `RoyaltySplit` is auto-created during `onboard_ip` when a `DerivativeLink` exists — no separate instruction.
 - `License` and `LicenseGrant` are thin interface accounts matching `ip_core`'s deserialization exactly (`try_from_slice` rejects trailing bytes).
 - No governance mechanisms in the program itself.
@@ -542,7 +569,6 @@ Define errors specific to `kollect`:
 - InvalidMultiplier
 - PlaybackAlreadySubmitted (duplicate day commitment for venue)
 - InvalidDayTimestamp (not aligned to UTC midnight)
-- SettlementPeriodNotEnded
 - CommitmentAlreadySettled
 - NoCommitmentsToSettle
 - InvalidSettlementPeriod
@@ -561,6 +587,8 @@ Define errors specific to `kollect`:
 - RoyaltyChainTooDeep (exceeds MAX_ROYALTY_CHAIN_DEPTH = 3)
 - InsufficientPayment (license purchase price not met)
 - InvalidCurrency (wrong SPL mint for payment)
+- PlayCountMismatch (sum of distributions.plays != sum of commitments.total_plays)
+- InvalidSettlementTimestamp (settled_at not within tolerance of on-chain clock)
 
 ---
 
@@ -571,7 +599,7 @@ Emit events for all state changes:
 ### Platform
 
 - **PlatformInitialized**: config, authority, base_price_per_play, platform_fee_bps
-- **PlatformConfigUpdated**: config, changed fields
+- **PlatformConfigUpdated**: config, changed fields (uses `currency` field name)
 - **PlatformFeesWithdrawn**: treasury, amount, destination
 
 ### IP Onboarding
@@ -584,6 +612,7 @@ Emit events for all state changes:
 
 - **EntityTreasuryInitialized**: entity_treasury, entity, authority
 - **EntityEarningsWithdrawn**: entity_treasury, amount, destination
+- **IpTreasuryWithdrawn**: ip_treasury, entity_treasury, amount
 
 ### Venue
 
@@ -650,7 +679,8 @@ programs/kollect/
     │   ├── entity/
     │   │   ├── mod.rs
     │   │   ├── initialize_entity_treasury.rs
-    │   │   └── withdraw_entity_earnings.rs
+    │   │   ├── withdraw_entity_earnings.rs
+    │   │   └── withdraw_ip_treasury.rs
     │   ├── venue/
     │   │   ├── mod.rs
     │   │   ├── register_venue.rs
@@ -694,3 +724,17 @@ programs/kollect/
 - Test royalty chain depth capped at 3 levels
 - Test IpDistribution validation in settle_period (sum check, onboarding check)
 - Test venue multiplier override by platform authority only
+- Test partial settlement: multiple SettlementRecords with different `settled_at` for same `period_start`
+- Test dual-signer settlement (platform authority + venue authority)
+- Test deactivated IP can still receive settlement
+- Test `withdraw_ip_treasury` flow: entity controller withdraws from IpTreasury to EntityTreasury
+- Test ATA creation in `initialize_platform`, `initialize_entity_treasury`, and `onboard_ip`
+- Test admin-only `onboard_ip` (entity controller must be rejected)
+- Test admin-only `deactivate_ip` (entity controller must be rejected)
+- Test partial settlement: multiple SettlementRecords with different `settled_at` for same `period_start`
+- Test dual-signer settlement (platform authority + venue authority)
+- Test deactivated IP can still receive settlement
+- Test `withdraw_ip_treasury` flow: entity controller withdraws from IpTreasury to EntityTreasury
+- Test ATA creation in `initialize_platform`, `initialize_entity_treasury`, and `onboard_ip`
+- Test admin-only `onboard_ip` (entity controller must be rejected)
+- Test admin-only `deactivate_ip` (entity controller must be rejected)

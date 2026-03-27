@@ -9,14 +9,18 @@ import {
   createTestIp,
   deriveEntityTreasuryPda,
   deriveIpConfigPda,
+  deriveIpTreasuryPda,
   derivePlatformConfigPda,
+  derivePlatformTreasuryPda,
   deriveVenuePda,
   derivePlaybackPda,
   deriveSettlementPda,
   randomHash,
   signerMeta,
   venueIdBuffer,
+  venueCid,
 } from "./setup";
+import { getOrCreateAssociatedTokenAccount, mintTo } from "@solana/spl-token";
 
 const SECONDS_PER_DAY = 86400;
 const SETTLEMENT_PERIOD_SECONDS = 604800; // 7 days
@@ -55,12 +59,7 @@ describe("kollect playback & settlement", () => {
       await kollect.methods
         .registerVenue(new anchor.BN(venueId), {
           venueAuthority: authority.publicKey,
-          name: Array.from(
-            Buffer.from("Playback Venue".padEnd(64, "\0")),
-          ) as number[],
-          venueType: 0,
-          capacity: 500,
-          operatingHours: 18,
+          cid: venueCid("QmPlaybackVenue"),
           multiplierBps: 10_000,
         })
         .rpc();
@@ -173,12 +172,7 @@ describe("kollect playback & settlement", () => {
         await kollect.methods
           .registerVenue(new anchor.BN(deactVenueId), {
             venueAuthority: authority.publicKey,
-            name: Array.from(
-              Buffer.from("DeactVenue".padEnd(64, "\0")),
-            ) as number[],
-            venueType: 1,
-            capacity: 100,
-            operatingHours: 12,
+            cid: venueCid("QmDeactVenue"),
             multiplierBps: 10_000,
           })
           .rpc();
@@ -241,6 +235,10 @@ describe("kollect playback & settlement", () => {
     let settlementVenuePda: PublicKey;
     let periodStart: number;
     let commitmentPdas: PublicKey[];
+    let mint: PublicKey;
+    let venueTokenAccount: PublicKey;
+    let platformTreasuryTokenAccount: PublicKey;
+    let usedSettledAt: number;
 
     before(async () => {
       // Create a dedicated venue for settlement tests
@@ -253,12 +251,7 @@ describe("kollect playback & settlement", () => {
         await kollect.methods
           .registerVenue(new anchor.BN(settlementVenueId), {
             venueAuthority: authority.publicKey,
-            name: Array.from(
-              Buffer.from("SettleVenue".padEnd(64, "\0")),
-            ) as number[],
-            venueType: 2,
-            capacity: 300,
-            operatingHours: 20,
+            cid: venueCid("QmSettlementVenue"),
             multiplierBps: 10_000,
           })
           .rpc();
@@ -287,6 +280,40 @@ describe("kollect playback & settlement", () => {
           .accountsPartial({ venue: settlementVenuePda })
           .rpc();
       }
+
+      // Setup token accounts for settlement
+      const config = await kollect.account.platformConfig.fetch(
+        platformConfigPda,
+      );
+      mint = config.currency;
+      const platformTreasuryPda = derivePlatformTreasuryPda(kollect.programId);
+
+      const venueAta = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        authority.payer,
+        mint,
+        authority.publicKey,
+      );
+      venueTokenAccount = venueAta.address;
+
+      const platformAta = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        authority.payer,
+        mint,
+        platformTreasuryPda,
+        true,
+      );
+      platformTreasuryTokenAccount = platformAta.address;
+
+      // Fund venue token account
+      await mintTo(
+        provider.connection,
+        authority.payer,
+        mint,
+        venueTokenAccount,
+        authority.publicKey,
+        1_000_000_000,
+      );
     });
 
     it("settles a period with commitments", async () => {
@@ -302,7 +329,7 @@ describe("kollect playback & settlement", () => {
       } catch {
         await kollect.methods
           .initializeEntityTreasury(authority.publicKey)
-          .accounts({ entity: entity.entityPda })
+          .accounts({ entity: entity.entityPda, currencyMint: mint })
           .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
       }
@@ -313,38 +340,69 @@ describe("kollect playback & settlement", () => {
         await kollect.account.ipConfig.fetch(ipConfigPda);
       } catch {
         await kollect.methods
-          .onboardIp(null, false)
-          .accounts({ entity: entity.entityPda, ipAccount: ip.ipPda })
-          .remainingAccounts([signerMeta(authority.publicKey)])
+          .onboardIp(null)
+          .accounts({
+            entity: entity.entityPda,
+            ipAccount: ip.ipPda,
+            currencyMint: mint,
+          })
           .rpc();
       }
 
+      // Create IP treasury token account
+      const ipTreasuryPda = deriveIpTreasuryPda(ip.ipPda, kollect.programId);
+      const ipTreasuryAta = await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        authority.payer,
+        mint,
+        ipTreasuryPda,
+        true,
+      );
+
+      // settled_at must be close to on-chain clock (within 30s tolerance)
+      usedSettledAt = Math.floor(Date.now() / 1000);
       const settlementPda = deriveSettlementPda(
         settlementVenuePda,
         periodStart,
+        usedSettledAt,
         kollect.programId,
       );
 
+      // Total plays: 100+110+120+130+140+150+160 = 910
+      // basePricePerPlay=200_000, multiplierBps=10_000 => effectivePrice=200_000
+      // amount = 200_000 * 910 = 182_000_000
       const distributions = [
         {
           ipAccount: ip.ipPda,
-          amount: new anchor.BN(5000),
-          plays: new anchor.BN(700),
+          amount: new anchor.BN(182_000_000),
+          plays: new anchor.BN(910),
         },
       ];
 
-      // Pass commitment accounts as remainingAccounts
-      const remainingAccounts = commitmentPdas.map((pda) => ({
-        pubkey: pda,
-        isSigner: false,
-        isWritable: true,
-      }));
+      // remaining_accounts: commitment PDAs, then per-IP [IpConfig, IpTreasury, ipTreasuryTokenAccount]
+      const remainingAccounts = [
+        ...commitmentPdas.map((pda) => ({
+          pubkey: pda,
+          isSigner: false,
+          isWritable: true,
+        })),
+        { pubkey: ipConfigPda, isSigner: false, isWritable: false },
+        { pubkey: ipTreasuryPda, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryAta.address, isSigner: false, isWritable: true },
+      ];
 
       await kollect.methods
-        .settlePeriod(new anchor.BN(periodStart), distributions)
+        .settlePeriod(
+          new anchor.BN(periodStart),
+          new anchor.BN(usedSettledAt),
+          distributions,
+        )
         .accountsPartial({
+          venueAuthority: authority.publicKey,
           venue: settlementVenuePda,
           settlement: settlementPda,
+          venueTokenAccount,
+          platformTreasuryTokenAccount,
         })
         .remainingAccounts(remainingAccounts)
         .rpc();
@@ -357,10 +415,10 @@ describe("kollect playback & settlement", () => {
       expect(record.periodEnd.toNumber()).to.equal(
         periodStart + SETTLEMENT_PERIOD_SECONDS,
       );
-      expect(record.totalPlays.toNumber()).to.be.greaterThan(0);
+      expect(record.totalPlays.toNumber()).to.equal(910);
       expect(record.commitmentCount).to.equal(7);
       expect(record.ipCount).to.equal(1);
-      expect(record.settledAt.toNumber()).to.be.greaterThan(0);
+      expect(record.settledAt.toNumber()).to.equal(usedSettledAt);
 
       // Verify commitments are marked as settled
       for (const pda of commitmentPdas) {
@@ -370,25 +428,34 @@ describe("kollect playback & settlement", () => {
     });
 
     it("fails with period not yet ended", async () => {
-      // Use a period_start of today (period_end = 7 days from now)
+      // Use a period_start of today — no commitments exist for this period
       const futurePeriodStart = dayTimestampDaysAgo(0);
+      const futureSettledAt = Math.floor(Date.now() / 1000);
       const futureSettlementPda = deriveSettlementPda(
         settlementVenuePda,
         futurePeriodStart,
+        futureSettledAt,
         kollect.programId,
       );
 
       try {
         await kollect.methods
-          .settlePeriod(new anchor.BN(futurePeriodStart), [])
+          .settlePeriod(
+            new anchor.BN(futurePeriodStart),
+            new anchor.BN(futureSettledAt),
+            [],
+          )
           .accountsPartial({
+            venueAuthority: authority.publicKey,
             venue: settlementVenuePda,
             settlement: futureSettlementPda,
+            venueTokenAccount,
+            platformTreasuryTokenAccount,
           })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
-        expect(err.toString()).to.include("SettlementPeriodNotEnded");
+        expect(err.toString()).to.include("NoCommitmentsToSettle");
       }
     });
 
@@ -396,15 +463,23 @@ describe("kollect playback & settlement", () => {
       const settlementPda = deriveSettlementPda(
         settlementVenuePda,
         periodStart,
+        usedSettledAt,
         kollect.programId,
       );
 
       try {
         await kollect.methods
-          .settlePeriod(new anchor.BN(periodStart), [])
+          .settlePeriod(
+            new anchor.BN(periodStart),
+            new anchor.BN(usedSettledAt),
+            [],
+          )
           .accountsPartial({
+            venueAuthority: authority.publicKey,
             venue: settlementVenuePda,
             settlement: settlementPda,
+            venueTokenAccount,
+            platformTreasuryTokenAccount,
           })
           .rpc();
         expect.fail("Should have failed");
@@ -416,18 +491,27 @@ describe("kollect playback & settlement", () => {
     it("fails with no commitments to settle", async () => {
       // Use a different past period with no commitments
       const emptyPeriodStart = dayTimestampDaysAgo(28);
+      const emptySettledAt = Math.floor(Date.now() / 1000);
       const emptySettlementPda = deriveSettlementPda(
         settlementVenuePda,
         emptyPeriodStart,
+        emptySettledAt,
         kollect.programId,
       );
 
       try {
         await kollect.methods
-          .settlePeriod(new anchor.BN(emptyPeriodStart), [])
+          .settlePeriod(
+            new anchor.BN(emptyPeriodStart),
+            new anchor.BN(emptySettledAt),
+            [],
+          )
           .accountsPartial({
+            venueAuthority: authority.publicKey,
             venue: settlementVenuePda,
             settlement: emptySettlementPda,
+            venueTokenAccount,
+            platformTreasuryTokenAccount,
           })
           .rpc();
         expect.fail("Should have failed");
@@ -445,19 +529,28 @@ describe("kollect playback & settlement", () => {
       await provider.connection.confirmTransaction(airdropSig);
 
       const otherPeriodStart = dayTimestampDaysAgo(21);
+      const otherSettledAt = Math.floor(Date.now() / 1000);
       const otherSettlementPda = deriveSettlementPda(
         settlementVenuePda,
         otherPeriodStart,
+        otherSettledAt,
         kollect.programId,
       );
 
       try {
         await kollect.methods
-          .settlePeriod(new anchor.BN(otherPeriodStart), [])
+          .settlePeriod(
+            new anchor.BN(otherPeriodStart),
+            new anchor.BN(otherSettledAt),
+            [],
+          )
           .accountsPartial({
             authority: fakeAuth.publicKey,
+            venueAuthority: authority.publicKey,
             venue: settlementVenuePda,
             settlement: otherSettlementPda,
+            venueTokenAccount,
+            platformTreasuryTokenAccount,
           })
           .signers([fakeAuth])
           .rpc();

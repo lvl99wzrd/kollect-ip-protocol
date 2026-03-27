@@ -1,10 +1,12 @@
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token::{Mint, Token, TokenAccount};
 use ip_core::state::entity::Entity;
 
 use crate::error::KollectError;
 use crate::events::EntityTreasuryInitialized;
-use crate::state::EntityTreasury;
-use crate::utils::seeds::ENTITY_TREASURY_SEED;
+use crate::state::{EntityTreasury, PlatformConfig};
+use crate::utils::seeds::{ENTITY_TREASURY_SEED, PLATFORM_CONFIG_SEED};
 use crate::utils::validation::validate_entity_controller;
 
 #[derive(Accounts)]
@@ -26,6 +28,28 @@ pub struct InitializeEntityTreasury<'info> {
     )]
     pub entity_treasury: Account<'info, EntityTreasury>,
 
+    #[account(
+        seeds = [PLATFORM_CONFIG_SEED],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, PlatformConfig>,
+
+    #[account(
+        constraint = currency_mint.key() == config.currency @ KollectError::InvalidCurrency,
+    )]
+    pub currency_mint: Account<'info, Mint>,
+
+    /// ATA for the entity treasury to hold currency tokens.
+    #[account(
+        init,
+        payer = payer,
+        associated_token::mint = currency_mint,
+        associated_token::authority = entity_treasury,
+    )]
+    pub treasury_token_account: Account<'info, TokenAccount>,
+
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     // remaining_accounts: entity controller signer
 }

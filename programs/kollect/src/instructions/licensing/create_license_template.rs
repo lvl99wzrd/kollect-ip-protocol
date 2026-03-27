@@ -4,8 +4,8 @@ use ip_core::state::entity::Entity;
 use crate::constants::MAX_TEMPLATE_NAME_LENGTH;
 use crate::error::KollectError;
 use crate::events::LicenseTemplateCreated;
-use crate::state::{IpConfig, License, LicenseTemplate};
-use crate::utils::seeds::{IP_CONFIG_SEED, LICENSE_SEED, LICENSE_TEMPLATE_SEED};
+use crate::state::{IpConfig, License, LicenseTemplate, PlatformConfig};
+use crate::utils::seeds::{IP_CONFIG_SEED, LICENSE_SEED, LICENSE_TEMPLATE_SEED, PLATFORM_CONFIG_SEED};
 use crate::utils::validation::validate_entity_controller;
 
 #[derive(Accounts)]
@@ -20,6 +20,13 @@ pub struct CreateLicenseTemplate<'info> {
     pub entity: Account<'info, Entity>,
 
     #[account(
+        seeds = [PLATFORM_CONFIG_SEED],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, PlatformConfig>,
+
+    #[account(
+        mut,
         seeds = [IP_CONFIG_SEED, ip_config.ip_account.as_ref()],
         bump = ip_config.bump,
         constraint = ip_config.owner_entity == entity.key() @ KollectError::IpOwnerMismatch,
@@ -54,12 +61,23 @@ pub fn handler(
     ctx: Context<CreateLicenseTemplate>,
     template_name: [u8; MAX_TEMPLATE_NAME_LENGTH],
     price: u64,
-    currency: Pubkey,
     max_grants: u16,
     grant_duration: i64,
 ) -> Result<()> {
     let entity = &ctx.accounts.entity;
     validate_entity_controller(entity, ctx.remaining_accounts)?;
+
+    require!(grant_duration >= 0, KollectError::InvalidGrantDuration);
+
+    // Enforce max_license_types limit
+    let max_types = ctx.accounts.config.max_license_types;
+    let current_count = ctx.accounts.ip_config.license_template_count;
+    require!(current_count < max_types, KollectError::MaxLicenseTypesReached);
+
+    // Increment license template count before any account moves
+    ctx.accounts.ip_config.license_template_count = current_count
+        .checked_add(1)
+        .ok_or(KollectError::ArithmeticOverflow)?;
 
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
@@ -71,7 +89,6 @@ pub fn handler(
     template.creator_entity = entity.key();
     template.template_name = template_name;
     template.price = price;
-    template.currency = currency;
     template.max_grants = max_grants;
     template.current_grants = 0;
     template.grant_duration = grant_duration;
@@ -100,3 +117,4 @@ pub fn handler(
 
     Ok(())
 }
+

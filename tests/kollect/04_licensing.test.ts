@@ -2,6 +2,7 @@ import * as anchor from "@coral-xyz/anchor";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import {
   createMint,
+  getAssociatedTokenAddressSync,
   getOrCreateAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
@@ -14,6 +15,7 @@ import {
   createTestIp,
   deriveEntityTreasuryPda,
   deriveIpConfigPda,
+  deriveIpTreasuryPda,
   derivePlatformConfigPda,
   derivePlatformTreasuryPda,
   deriveLicenseTemplatePda,
@@ -60,7 +62,7 @@ describe("kollect licensing", () => {
     } catch {
       await kollect.methods
         .initializeEntityTreasury(authority.publicKey)
-        .accounts({ entity: entityPda })
+        .accounts({ entity: entityPda, currencyMint: mint })
         .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
     }
@@ -74,9 +76,8 @@ describe("kollect licensing", () => {
       await kollect.account.ipConfig.fetch(ipConfigPda);
     } catch {
       await kollect.methods
-        .onboardIp(null, false)
-        .accounts({ entity: entityPda, ipAccount: ipPda })
-        .remainingAccounts([signerMeta(authority.publicKey)])
+        .onboardIp(null)
+        .accounts({ entity: entityPda, ipAccount: ipPda, currencyMint: mint })
         .rpc();
     }
   });
@@ -97,7 +98,6 @@ describe("kollect licensing", () => {
         .createLicenseTemplate(
           tplNameBytes,
           new anchor.BN(1_000_000), // price
-          mint, // currency
           100, // max_grants
           new anchor.BN(0), // grant_duration (0 = perpetual)
         )
@@ -115,7 +115,6 @@ describe("kollect licensing", () => {
       expect(tpl.ipConfig.toString()).to.equal(ipConfigPda.toString());
       expect(tpl.creatorEntity.toString()).to.equal(entityPda.toString());
       expect(tpl.price.toNumber()).to.equal(1_000_000);
-      expect(tpl.currency.toString()).to.equal(mint.toString());
       expect(tpl.maxGrants).to.equal(100);
       expect(tpl.currentGrants).to.equal(0);
       expect(tpl.grantDuration.toNumber()).to.equal(0);
@@ -133,7 +132,6 @@ describe("kollect licensing", () => {
           .createLicenseTemplate(
             tplNameBytes,
             new anchor.BN(500_000),
-            mint,
             50,
             new anchor.BN(0),
           )
@@ -158,7 +156,6 @@ describe("kollect licensing", () => {
           .createLicenseTemplate(
             nameBytes,
             new anchor.BN(100),
-            mint,
             10,
             new anchor.BN(0),
           )
@@ -180,15 +177,17 @@ describe("kollect licensing", () => {
       const ip2ConfigPda = deriveIpConfigPda(ip2.ipPda, kollect.programId);
 
       await kollect.methods
-        .onboardIp(null, false)
-        .accounts({ entity: entityPda, ipAccount: ip2.ipPda })
-        .remainingAccounts([signerMeta(authority.publicKey)])
+        .onboardIp(null)
+        .accounts({
+          entity: entityPda,
+          ipAccount: ip2.ipPda,
+          currencyMint: mint,
+        })
         .rpc();
 
       await kollect.methods
         .deactivateIp()
-        .accountsPartial({ entity: entityPda, ipConfig: ip2ConfigPda })
-        .remainingAccounts([signerMeta(authority.publicKey)])
+        .accountsPartial({ ipConfig: ip2ConfigPda })
         .rpc();
 
       const nameBytes = templateName("deact_ip_tpl");
@@ -198,7 +197,6 @@ describe("kollect licensing", () => {
           .createLicenseTemplate(
             nameBytes,
             new anchor.BN(100),
-            mint,
             10,
             new anchor.BN(0),
           )
@@ -222,8 +220,6 @@ describe("kollect licensing", () => {
       await kollect.methods
         .updateLicenseTemplate({
           newPrice: new anchor.BN(2_000_000),
-          newCurrency: null,
-          newMaxGrants: 200,
           newGrantDuration: null,
           newIsActive: null,
         })
@@ -239,17 +235,13 @@ describe("kollect licensing", () => {
         licenseTemplatePda,
       );
       expect(tpl.price.toNumber()).to.equal(2_000_000);
-      expect(tpl.maxGrants).to.equal(200);
-      // currency should be unchanged
-      expect(tpl.currency.toString()).to.equal(mint.toString());
+      expect(tpl.maxGrants).to.equal(100);
     });
 
     it("deactivates template via update", async () => {
       await kollect.methods
         .updateLicenseTemplate({
           newPrice: null,
-          newCurrency: null,
-          newMaxGrants: null,
           newGrantDuration: null,
           newIsActive: false,
         })
@@ -270,8 +262,6 @@ describe("kollect licensing", () => {
       await kollect.methods
         .updateLicenseTemplate({
           newPrice: null,
-          newCurrency: null,
-          newMaxGrants: null,
           newGrantDuration: null,
           newIsActive: true,
         })
@@ -291,8 +281,6 @@ describe("kollect licensing", () => {
         await kollect.methods
           .updateLicenseTemplate({
             newPrice: new anchor.BN(999),
-            newCurrency: null,
-            newMaxGrants: null,
             newGrantDuration: null,
             newIsActive: null,
           })
@@ -444,7 +432,7 @@ describe("kollect licensing", () => {
     let granteeEntityPda: PublicKey;
     let payerAta: PublicKey;
     let platformAta: PublicKey;
-    let ownerAta: PublicKey;
+    let ipTreasuryAta: PublicKey;
     let activeTplPda: PublicKey;
     let activeLicensePda: PublicKey;
 
@@ -462,7 +450,6 @@ describe("kollect licensing", () => {
         .createLicenseTemplate(
           purchaseTplName,
           new anchor.BN(1_000_000), // 1 token (6 decimals)
-          mint,
           10, // max_grants
           new anchor.BN(0), // perpetual
         )
@@ -497,13 +484,9 @@ describe("kollect licensing", () => {
       );
       platformAta = platformAtaAcct.address;
 
-      const ownerAtaAcct = await getOrCreateAssociatedTokenAccount(
-        provider.connection,
-        authority.payer,
-        mint,
-        authority.publicKey,
-      );
-      ownerAta = ownerAtaAcct.address;
+      // Derive IP treasury token account (created by onboardIp)
+      const ipTreasuryPda = deriveIpTreasuryPda(ipPda, kollect.programId);
+      ipTreasuryAta = getAssociatedTokenAddressSync(mint, ipTreasuryPda, true);
 
       // Ensure payer has enough tokens
       await mintTo(
@@ -535,7 +518,7 @@ describe("kollect licensing", () => {
           licenseGrant: grantPda,
           payerTokenAccount: payerAta,
           platformTokenAccount: platformAta,
-          ipOwnerTokenAccount: ownerAta,
+          ipTreasuryTokenAccount: ipTreasuryAta,
         })
         .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
@@ -568,7 +551,7 @@ describe("kollect licensing", () => {
             licenseGrant: grantPda,
             payerTokenAccount: payerAta,
             platformTokenAccount: platformAta,
-            ipOwnerTokenAccount: ownerAta,
+            ipTreasuryTokenAccount: ipTreasuryAta,
           })
           .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
@@ -583,8 +566,6 @@ describe("kollect licensing", () => {
       await kollect.methods
         .updateLicenseTemplate({
           newPrice: null,
-          newCurrency: null,
-          newMaxGrants: null,
           newGrantDuration: null,
           newIsActive: false,
         })
@@ -613,7 +594,7 @@ describe("kollect licensing", () => {
             licenseGrant: grantPda,
             payerTokenAccount: payerAta,
             platformTokenAccount: platformAta,
-            ipOwnerTokenAccount: ownerAta,
+            ipTreasuryTokenAccount: ipTreasuryAta,
           })
           .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
@@ -625,8 +606,6 @@ describe("kollect licensing", () => {
         await kollect.methods
           .updateLicenseTemplate({
             newPrice: null,
-            newCurrency: null,
-            newMaxGrants: null,
             newGrantDuration: null,
             newIsActive: true,
           })
@@ -657,7 +636,6 @@ describe("kollect licensing", () => {
         .createLicenseTemplate(
           limitedName,
           new anchor.BN(0), // free
-          mint,
           1, // max_grants = 1
           new anchor.BN(0),
         )
@@ -685,7 +663,7 @@ describe("kollect licensing", () => {
           licenseGrant: grant1Pda,
           payerTokenAccount: payerAta,
           platformTokenAccount: platformAta,
-          ipOwnerTokenAccount: ownerAta,
+          ipTreasuryTokenAccount: ipTreasuryAta,
         })
         .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
@@ -708,7 +686,7 @@ describe("kollect licensing", () => {
             licenseGrant: grant2Pda,
             payerTokenAccount: payerAta,
             platformTokenAccount: platformAta,
-            ipOwnerTokenAccount: ownerAta,
+            ipTreasuryTokenAccount: ipTreasuryAta,
           })
           .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();

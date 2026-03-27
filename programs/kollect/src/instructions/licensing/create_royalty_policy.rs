@@ -56,6 +56,8 @@ pub fn handler(
     let entity = &ctx.accounts.entity;
     validate_entity_controller(entity, ctx.remaining_accounts)?;
 
+    require!(derivative_share_bps <= 10_000, KollectError::InvalidShareBps);
+
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 

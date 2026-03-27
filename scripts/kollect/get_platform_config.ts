@@ -41,10 +41,8 @@ async function main() {
     console.log(`  Authority: ${config.authority.toBase58()}`);
     console.log(`  Base Price Per Play: ${config.basePricePerPlay.toString()}`);
     console.log(`  Platform Fee BPS: ${config.platformFeeBps}`);
-    console.log(
-      `  Settlement Currency: ${config.settlementCurrency.toBase58()}`,
-    );
-    console.log(`  Max Derivatives: ${config.maxDerivatives}`);
+    console.log(`  Currency: ${config.currency.toBase58()}`);
+    console.log(`  Max Derivatives Depth: ${config.maxDerivativesDepth}`);
     console.log(`  Treasury: ${config.treasury.toBase58()}`);
     console.log(`  Bump: ${config.bump}`);
 

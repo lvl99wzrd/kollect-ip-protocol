@@ -16,8 +16,8 @@ pub struct PlatformConfigUpdated {
     pub authority: Pubkey,
     pub base_price_per_play: u64,
     pub platform_fee_bps: u16,
-    pub settlement_currency: Pubkey,
-    pub max_derivatives: u16,
+    pub max_derivatives_depth: u8,
+    pub max_license_types: u16,
 }
 
 #[event]
@@ -52,6 +52,12 @@ pub struct IpDeactivated {
     pub deactivated_at: i64,
 }
 
+#[event]
+pub struct IpReactivated {
+    pub ip_config: Pubkey,
+    pub reactivated_at: i64,
+}
+
 // -- Entity Treasury Events --
 
 #[event]
@@ -75,17 +81,14 @@ pub struct VenueRegistered {
     pub venue: Pubkey,
     pub venue_id: u64,
     pub authority: Pubkey,
-    pub venue_type: u8,
-    pub capacity: u32,
+    pub cid: [u8; 96],
     pub registered_at: i64,
 }
 
 #[event]
 pub struct VenueUpdated {
     pub venue: Pubkey,
-    pub venue_type: u8,
-    pub capacity: u32,
-    pub operating_hours: u8,
+    pub cid: [u8; 96],
     pub updated_at: i64,
 }
 
@@ -101,6 +104,12 @@ pub struct VenueMultiplierUpdated {
 pub struct VenueDeactivated {
     pub venue: Pubkey,
     pub deactivated_at: i64,
+}
+
+#[event]
+pub struct VenueReactivated {
+    pub venue: Pubkey,
+    pub reactivated_at: i64,
 }
 
 // -- Licensing Events --
@@ -143,6 +152,8 @@ pub struct RoyaltyPolicyUpdated {
     pub allow_remix: bool,
     pub allow_cover: bool,
     pub allow_sample: bool,
+    pub attribution_required: bool,
+    pub commercial_use: bool,
     pub updated_at: i64,
 }
 
@@ -195,4 +206,11 @@ pub struct RoyaltyDistributed {
     pub to_ip: Pubkey,
     pub amount: u64,
     pub split: Pubkey,
+}
+
+#[event]
+pub struct IpTreasuryWithdrawn {
+    pub ip_treasury: Pubkey,
+    pub entity_treasury: Pubkey,
+    pub amount: u64,
 }

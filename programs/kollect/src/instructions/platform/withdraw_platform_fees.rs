@@ -3,12 +3,18 @@ use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 
 use crate::error::KollectError;
 use crate::events::PlatformFeesWithdrawn;
-use crate::state::PlatformTreasury;
-use crate::utils::seeds::PLATFORM_TREASURY_SEED;
+use crate::state::{PlatformConfig, PlatformTreasury};
+use crate::utils::seeds::{PLATFORM_CONFIG_SEED, PLATFORM_TREASURY_SEED};
 
 #[derive(Accounts)]
 pub struct WithdrawPlatformFees<'info> {
     pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [PLATFORM_CONFIG_SEED],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, PlatformConfig>,
 
     #[account(
         seeds = [PLATFORM_TREASURY_SEED],
@@ -20,6 +26,7 @@ pub struct WithdrawPlatformFees<'info> {
     #[account(
         mut,
         token::authority = treasury,
+        token::mint = config.currency,
     )]
     pub treasury_token_account: Account<'info, TokenAccount>,
 

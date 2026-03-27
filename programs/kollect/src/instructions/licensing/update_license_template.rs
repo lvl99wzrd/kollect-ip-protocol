@@ -10,8 +10,6 @@ use crate::utils::validation::validate_entity_controller;
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct UpdateLicenseTemplateParams {
     pub new_price: Option<u64>,
-    pub new_currency: Option<Pubkey>,
-    pub new_max_grants: Option<u16>,
     pub new_grant_duration: Option<i64>,
     pub new_is_active: Option<bool>,
 }
@@ -52,13 +50,8 @@ pub fn handler(
     if let Some(price) = params.new_price {
         template.price = price;
     }
-    if let Some(currency) = params.new_currency {
-        template.currency = currency;
-    }
-    if let Some(max_grants) = params.new_max_grants {
-        template.max_grants = max_grants;
-    }
     if let Some(duration) = params.new_grant_duration {
+        require!(duration >= 0, KollectError::InvalidGrantDuration);
         template.grant_duration = duration;
     }
     if let Some(is_active) = params.new_is_active {
@@ -79,3 +72,4 @@ pub fn handler(
 
     Ok(())
 }
+

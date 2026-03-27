@@ -10,7 +10,7 @@ pub mod utils;
 use constants::{MAX_CID_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
 use instructions::*;
 
-declare_id!("Eo5G2gNsVKR2orqpqYippPwxjaZDPX3gALCtV9jU6wWm");
+declare_id!("JBvD4TmNeQxwWPRvvcuXrqRcj5m9eKEMK2M65m8VuRNz");
 
 #[program]
 pub mod ip_core {

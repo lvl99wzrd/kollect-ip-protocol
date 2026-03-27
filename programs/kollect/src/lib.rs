@@ -9,7 +9,7 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("P5UcEmMdxHvLFmkE743XzEg5pnN5csNb8jUxTWj6VoJ");
+declare_id!("8h11nLwuqzMfg5AoVqpNcxFqVGp5oNUQrESLJaPC3a5A");
 
 #[program]
 pub mod kollect {
@@ -21,15 +21,17 @@ pub mod kollect {
         ctx: Context<InitializePlatform>,
         base_price_per_play: u64,
         platform_fee_bps: u16,
-        settlement_currency: Pubkey,
-        max_derivatives: u16,
+        currency: Pubkey,
+        max_derivatives_depth: u8,
+        max_license_types: u16,
     ) -> Result<()> {
         instructions::platform::initialize_platform::handler(
             ctx,
             base_price_per_play,
             platform_fee_bps,
-            settlement_currency,
-            max_derivatives,
+            currency,
+            max_derivatives_depth,
+            max_license_types,
         )
     }
 
@@ -49,9 +51,8 @@ pub mod kollect {
     pub fn onboard_ip<'a, 'b, 'c, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, OnboardIp<'info>>,
         price_per_play_override: Option<u64>,
-        is_derivative: bool,
     ) -> Result<()> {
-        instructions::ip::onboard_ip::handler(ctx, price_per_play_override, is_derivative)
+        instructions::ip::onboard_ip::handler(ctx, price_per_play_override)
     }
 
     pub fn update_ip_config(
@@ -63,6 +64,10 @@ pub mod kollect {
 
     pub fn deactivate_ip(ctx: Context<DeactivateIp>) -> Result<()> {
         instructions::ip::deactivate_ip::handler(ctx)
+    }
+
+    pub fn reactivate_ip(ctx: Context<ReactivateIp>) -> Result<()> {
+        instructions::ip::reactivate_ip::handler(ctx)
     }
 
     // -- Entity Treasury --
@@ -106,13 +111,16 @@ pub mod kollect {
         instructions::venue::deactivate_venue::handler(ctx)
     }
 
+    pub fn reactivate_venue(ctx: Context<ReactivateVenue>) -> Result<()> {
+        instructions::venue::reactivate_venue::handler(ctx)
+    }
+
     // -- Licensing --
 
     pub fn create_license_template(
         ctx: Context<CreateLicenseTemplate>,
         template_name: [u8; 32],
         price: u64,
-        currency: Pubkey,
         max_grants: u16,
         grant_duration: i64,
     ) -> Result<()> {
@@ -120,7 +128,6 @@ pub mod kollect {
             ctx,
             template_name,
             price,
-            currency,
             max_grants,
             grant_duration,
         )
@@ -180,11 +187,18 @@ pub mod kollect {
         )
     }
 
-    pub fn settle_period(
-        ctx: Context<SettlePeriod>,
+    pub fn settle_period<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, SettlePeriod<'info>>,
         period_start: i64,
+        settled_at: i64,
         distributions: Vec<IpDistribution>,
     ) -> Result<()> {
-        instructions::playback::settle_period::handler(ctx, period_start, distributions)
+        instructions::playback::settle_period::handler(ctx, period_start, settled_at, distributions)
+    }
+
+    // -- Entity Withdrawals --
+
+    pub fn withdraw_ip_treasury(ctx: Context<WithdrawIpTreasury>, amount: u64) -> Result<()> {
+        instructions::entity::withdraw_ip_treasury::handler(ctx, amount)
     }
 }

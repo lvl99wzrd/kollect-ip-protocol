@@ -93,7 +93,7 @@ async function main() {
   console.log(`Total Earned: ${entityTreasury.totalEarned.toString()}`);
   console.log(`Total Withdrawn: ${entityTreasury.totalWithdrawn.toString()}`);
 
-  // Fetch platform config for settlement currency
+  // Fetch platform config for currency
   const [configPda] = derivePlatformConfigPda(program.programId);
   let config;
   try {
@@ -103,7 +103,7 @@ async function main() {
     process.exit(1);
   }
 
-  const mint = config.settlementCurrency;
+  const mint = config.currency;
 
   // Resolve treasury token account (ATA for entity treasury PDA)
   const treasuryTokenAccount = await getAssociatedTokenAddress(
@@ -126,7 +126,7 @@ async function main() {
     destination = ata.address;
   }
 
-  console.log(`Settlement Currency: ${mint.toBase58()}`);
+  console.log(`Currency: ${mint.toBase58()}`);
   console.log(`Treasury Token Account: ${treasuryTokenAccount.toBase58()}`);
   console.log(`Destination: ${destination.toBase58()}`);
   console.log(`Withdraw Amount: ${amount.toString()}`);

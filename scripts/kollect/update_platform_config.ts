@@ -8,8 +8,8 @@
  *   NEW_AUTHORITY            - New authority pubkey
  *   NEW_BASE_PRICE_PER_PLAY  - New base price per play
  *   NEW_PLATFORM_FEE_BPS     - New platform fee in basis points
- *   NEW_SETTLEMENT_CURRENCY  - New SPL token mint address
- *   NEW_MAX_DERIVATIVES      - New max derivative chain depth
+ *   NEW_CURRENCY             - New SPL token mint address
+ *   NEW_MAX_DERIVATIVES_DEPTH - New max derivative chain depth for royalties
  */
 
 import * as anchor from "@coral-xyz/anchor";
@@ -66,19 +66,14 @@ async function main() {
     `  Base Price Per Play: ${currentConfig.basePricePerPlay.toString()}`,
   );
   console.log(`  Platform Fee BPS: ${currentConfig.platformFeeBps}`);
-  console.log(
-    `  Settlement Currency: ${currentConfig.settlementCurrency.toBase58()}`,
-  );
-  console.log(`  Max Derivatives: ${currentConfig.maxDerivatives}`);
+  console.log(`  Currency: ${currentConfig.currency.toBase58()}`);
+  console.log(`  Max Derivatives Depth: ${currentConfig.maxDerivativesDepth}`);
+  console.log(`  Max License Types: ${currentConfig.maxLicenseTypes}`);
 
   // Parse optional environment variables
   const newAuthority = parseOptionalPubkey(
     process.env.NEW_AUTHORITY,
     "NEW_AUTHORITY",
-  );
-  const newSettlementCurrency = parseOptionalPubkey(
-    process.env.NEW_SETTLEMENT_CURRENCY,
-    "NEW_SETTLEMENT_CURRENCY",
   );
 
   let newBasePricePerPlay: anchor.BN | null = null;
@@ -99,11 +94,25 @@ async function main() {
     }
   }
 
-  let newMaxDerivatives: number | null = null;
-  if (process.env.NEW_MAX_DERIVATIVES) {
-    newMaxDerivatives = parseInt(process.env.NEW_MAX_DERIVATIVES, 10);
-    if (newMaxDerivatives < 0 || newMaxDerivatives > 65535) {
-      console.error("Error: NEW_MAX_DERIVATIVES must be between 0 and 65535");
+  let newMaxDerivativesDepth: number | null = null;
+  if (process.env.NEW_MAX_DERIVATIVES_DEPTH) {
+    newMaxDerivativesDepth = parseInt(
+      process.env.NEW_MAX_DERIVATIVES_DEPTH,
+      10,
+    );
+    if (newMaxDerivativesDepth < 0 || newMaxDerivativesDepth > 255) {
+      console.error(
+        "Error: NEW_MAX_DERIVATIVES_DEPTH must be between 0 and 255",
+      );
+      process.exit(1);
+    }
+  }
+
+  let newMaxLicenseTypes: number | null = null;
+  if (process.env.NEW_MAX_LICENSE_TYPES) {
+    newMaxLicenseTypes = parseInt(process.env.NEW_MAX_LICENSE_TYPES, 10);
+    if (newMaxLicenseTypes < 1 || newMaxLicenseTypes > 65535) {
+      console.error("Error: NEW_MAX_LICENSE_TYPES must be between 1 and 65535");
       process.exit(1);
     }
   }
@@ -113,14 +122,14 @@ async function main() {
     !newAuthority &&
     !newBasePricePerPlay &&
     newPlatformFeeBps === null &&
-    !newSettlementCurrency &&
-    newMaxDerivatives === null
+    newMaxDerivativesDepth === null &&
+    newMaxLicenseTypes === null
   ) {
     console.error("\nError: No updates specified. Set at least one of:");
     console.error(
       "  NEW_AUTHORITY, NEW_BASE_PRICE_PER_PLAY, NEW_PLATFORM_FEE_BPS,",
     );
-    console.error("  NEW_SETTLEMENT_CURRENCY, NEW_MAX_DERIVATIVES");
+    console.error("  NEW_MAX_DERIVATIVES_DEPTH, NEW_MAX_LICENSE_TYPES");
     process.exit(1);
   }
 
@@ -140,8 +149,8 @@ async function main() {
         newAuthority: newAuthority,
         newBasePricePerPlay: newBasePricePerPlay,
         newPlatformFeeBps: newPlatformFeeBps,
-        newSettlementCurrency: newSettlementCurrency,
-        newMaxDerivatives: newMaxDerivatives,
+        newMaxDerivativesDepth: newMaxDerivativesDepth,
+        newMaxLicenseTypes: newMaxLicenseTypes,
       })
       .rpc();
 
@@ -154,10 +163,8 @@ async function main() {
     console.log(`  Authority: ${config.authority.toBase58()}`);
     console.log(`  Base Price Per Play: ${config.basePricePerPlay.toString()}`);
     console.log(`  Platform Fee BPS: ${config.platformFeeBps}`);
-    console.log(
-      `  Settlement Currency: ${config.settlementCurrency.toBase58()}`,
-    );
-    console.log(`  Max Derivatives: ${config.maxDerivatives}`);
+    console.log(`  Currency: ${config.currency.toBase58()}`);
+    console.log(`  Max Derivatives Depth: ${config.maxDerivativesDepth}`);
 
     console.log(`\nConfig: ${explorerUrl(configPda, cluster)}`);
     console.log(`Tx: ${explorerTxUrl(tx, cluster)}`);

@@ -24,13 +24,15 @@ describe("kollect ip onboarding", () => {
   let ipPda: PublicKey;
   let ipConfigPda: PublicKey;
   let ipTreasuryPda: PublicKey;
+  let mint: PublicKey;
 
   before(async () => {
     await initializeIpCorePrerequisites();
 
     // Ensure platform is initialized
     const configPda = derivePlatformConfigPda(kollect.programId);
-    await kollect.account.platformConfig.fetch(configPda);
+    const config = await kollect.account.platformConfig.fetch(configPda);
+    mint = config.currency;
 
     // Create entity and entity treasury
     const entity = await createTestEntity("ip_onboard_entity");
@@ -43,7 +45,7 @@ describe("kollect ip onboarding", () => {
     } catch {
       await kollect.methods
         .initializeEntityTreasury(authority.publicKey)
-        .accounts({ entity: entityPda })
+        .accounts({ entity: entityPda, currencyMint: mint })
         .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
     }
@@ -57,12 +59,12 @@ describe("kollect ip onboarding", () => {
       ipTreasuryPda = deriveIpTreasuryPda(ipPda, kollect.programId);
 
       await kollect.methods
-        .onboardIp(null, false)
+        .onboardIp(null)
         .accounts({
           entity: entityPda,
           ipAccount: ipPda,
+          currencyMint: mint,
         })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
 
       const ipConfig = await kollect.account.ipConfig.fetch(ipConfigPda);
@@ -87,12 +89,12 @@ describe("kollect ip onboarding", () => {
       const configPda = deriveIpConfigPda(ip.ipPda, kollect.programId);
 
       await kollect.methods
-        .onboardIp(new anchor.BN(500_000), false)
+        .onboardIp(new anchor.BN(500_000))
         .accounts({
           entity: entityPda,
           ipAccount: ip.ipPda,
+          currencyMint: mint,
         })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
 
       const ipConfig = await kollect.account.ipConfig.fetch(configPda);
@@ -102,12 +104,12 @@ describe("kollect ip onboarding", () => {
     it("fails if IP already onboarded (PDA collision)", async () => {
       try {
         await kollect.methods
-          .onboardIp(null, false)
+          .onboardIp(null)
           .accounts({
             entity: entityPda,
             ipAccount: ipPda,
+            currencyMint: mint,
           })
-          .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -129,7 +131,7 @@ describe("kollect ip onboarding", () => {
       } catch {
         await kollect.methods
           .initializeEntityTreasury(authority.publicKey)
-          .accounts({ entity: otherEntity.entityPda })
+          .accounts({ entity: otherEntity.entityPda, currencyMint: mint })
           .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
       }
@@ -140,12 +142,12 @@ describe("kollect ip onboarding", () => {
       try {
         // Try to onboard it with the wrong entity
         await kollect.methods
-          .onboardIp(null, false)
+          .onboardIp(null)
           .accounts({
             entity: otherEntity.entityPda,
             ipAccount: ip.ipPda,
+            currencyMint: mint,
           })
-          .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -160,12 +162,12 @@ describe("kollect ip onboarding", () => {
 
       try {
         await kollect.methods
-          .onboardIp(null, false)
+          .onboardIp(null)
           .accounts({
             entity: noTreasuryEntity.entityPda,
             ipAccount: ip.ipPda,
+            currencyMint: mint,
           })
-          .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -174,30 +176,30 @@ describe("kollect ip onboarding", () => {
       }
     });
 
-    it("fails with non-controller signer", async () => {
-      const fakeController = Keypair.generate();
+    it("fails with non-platform authority", async () => {
+      const fakeAuthority = Keypair.generate();
       const sig = await provider.connection.requestAirdrop(
-        fakeController.publicKey,
-        1_000_000_000,
+        fakeAuthority.publicKey,
+        2_000_000_000,
       );
       await provider.connection.confirmTransaction(sig);
 
       const ip = await createTestIp(entityPda);
 
       try {
-        // Pass a non-controller signer
         await kollect.methods
-          .onboardIp(null, false)
+          .onboardIp(null)
           .accounts({
+            authority: fakeAuthority.publicKey,
             entity: entityPda,
             ipAccount: ip.ipPda,
+            currencyMint: mint,
           })
-          .remainingAccounts([signerMeta(fakeController.publicKey)])
-          .signers([fakeController])
+          .signers([fakeAuthority])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
-        expect(err.toString()).to.include("InsufficientSignatures");
+        expect(err.toString()).to.include("InvalidAuthority");
       }
     });
   });
@@ -266,12 +268,12 @@ describe("kollect ip onboarding", () => {
       deactIpConfigPda = deriveIpConfigPda(deactIpPda, kollect.programId);
 
       await kollect.methods
-        .onboardIp(null, false)
+        .onboardIp(null)
         .accounts({
           entity: entityPda,
           ipAccount: deactIpPda,
+          currencyMint: mint,
         })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
     });
 
@@ -281,11 +283,7 @@ describe("kollect ip onboarding", () => {
 
       await kollect.methods
         .deactivateIp()
-        .accountsPartial({
-          entity: entityPda,
-          ipConfig: deactIpConfigPda,
-        })
-        .remainingAccounts([signerMeta(authority.publicKey)])
+        .accountsPartial({ ipConfig: deactIpConfigPda })
         .rpc();
 
       const after = await kollect.account.ipConfig.fetch(deactIpConfigPda);
@@ -296,15 +294,101 @@ describe("kollect ip onboarding", () => {
       try {
         await kollect.methods
           .deactivateIp()
-          .accountsPartial({
-            entity: entityPda,
-            ipConfig: deactIpConfigPda,
-          })
-          .remainingAccounts([signerMeta(authority.publicKey)])
+          .accountsPartial({ ipConfig: deactIpConfigPda })
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
         expect(err.toString()).to.include("IpNotActive");
+      }
+    });
+  });
+
+  describe("reactivate_ip", () => {
+    let reactIpPda: PublicKey;
+    let reactIpConfigPda: PublicKey;
+
+    before(async () => {
+      const ip = await createTestIp(entityPda);
+      reactIpPda = ip.ipPda;
+      reactIpConfigPda = deriveIpConfigPda(reactIpPda, kollect.programId);
+
+      await kollect.methods
+        .onboardIp(null)
+        .accounts({
+          entity: entityPda,
+          ipAccount: reactIpPda,
+          currencyMint: mint,
+        })
+        .rpc();
+
+      await kollect.methods
+        .deactivateIp()
+        .accountsPartial({ ipConfig: reactIpConfigPda })
+        .rpc();
+    });
+
+    it("reactivates an inactive IP", async () => {
+      const before = await kollect.account.ipConfig.fetch(reactIpConfigPda);
+      expect(before.isActive).to.be.false;
+
+      await kollect.methods
+        .reactivateIp()
+        .accountsPartial({ ipConfig: reactIpConfigPda })
+        .rpc();
+
+      const after = await kollect.account.ipConfig.fetch(reactIpConfigPda);
+      expect(after.isActive).to.be.true;
+    });
+
+    it("fails if IP is already active", async () => {
+      try {
+        await kollect.methods
+          .reactivateIp()
+          .accountsPartial({ ipConfig: reactIpConfigPda })
+          .rpc();
+        expect.fail("Should have failed");
+      } catch (err) {
+        expect(err.toString()).to.include("IpAlreadyActive");
+      }
+    });
+
+    it("fails with non-platform authority", async () => {
+      const fakeAuth = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(
+        fakeAuth.publicKey,
+        1_000_000_000,
+      );
+      await provider.connection.confirmTransaction(sig);
+
+      const ip2 = await createTestIp(entityPda);
+      const ipConfig2 = deriveIpConfigPda(ip2.ipPda, kollect.programId);
+
+      await kollect.methods
+        .onboardIp(null)
+        .accounts({
+          entity: entityPda,
+          ipAccount: ip2.ipPda,
+          currencyMint: mint,
+        })
+        .rpc();
+
+      await kollect.methods
+        .deactivateIp()
+        .accountsPartial({ ipConfig: ipConfig2 })
+        .rpc();
+
+      try {
+        await kollect.methods
+          .reactivateIp()
+          .accountsPartial({
+            authority: fakeAuth.publicKey,
+            ipConfig: ipConfig2,
+          })
+          .signers([fakeAuth])
+          .rpc();
+        expect.fail("Should have failed");
+      } catch (err) {
+        expect(err.toString()).to.include("InvalidAuthority");
       }
     });
   });

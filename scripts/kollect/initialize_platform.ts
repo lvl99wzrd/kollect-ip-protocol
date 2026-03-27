@@ -2,14 +2,15 @@
  * Initialize Kollect Platform Script
  *
  * Usage:
- *   BASE_PRICE_PER_PLAY=100000 PLATFORM_FEE_BPS=500 SETTLEMENT_CURRENCY=<mint> MAX_DERIVATIVES=10 \
+ *   BASE_PRICE_PER_PLAY=100000 PLATFORM_FEE_BPS=500 CURRENCY=<mint> MAX_DERIVATIVES_DEPTH=3 MAX_LICENSE_TYPES=10 \
  *     anchor run kollect_initialize_platform --provider.cluster devnet
  *
  * Environment Variables:
  *   BASE_PRICE_PER_PLAY  - Base price per playback event in lamports/base units (required)
  *   PLATFORM_FEE_BPS     - Platform fee in basis points, e.g. 500 = 5% (required)
- *   SETTLEMENT_CURRENCY  - SPL token mint address for settlement (required)
- *   MAX_DERIVATIVES      - Maximum derivative chain depth (required)
+ *   CURRENCY  - SPL token mint address for settlement (required)
+ *   MAX_DERIVATIVES_DEPTH - Maximum derivative chain depth for royalties (required)
+ *   MAX_LICENSE_TYPES    - Maximum license types per IP (required)
  */
 
 import * as anchor from "@coral-xyz/anchor";
@@ -41,19 +42,18 @@ async function main() {
   // Read and validate environment variables
   const basePricePerPlayStr = requireEnv("BASE_PRICE_PER_PLAY", "100000");
   const platformFeeBpsStr = requireEnv("PLATFORM_FEE_BPS", "500");
-  const settlementCurrencyStr = requireEnv(
-    "SETTLEMENT_CURRENCY",
+  const currencyStr = requireEnv(
+    "CURRENCY",
     "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   );
-  const maxDerivativesStr = requireEnv("MAX_DERIVATIVES", "10");
+  const maxDerivativesDepthStr = requireEnv("MAX_DERIVATIVES_DEPTH", "3");
+  const maxLicenseTypesStr = requireEnv("MAX_LICENSE_TYPES", "10");
 
   const basePricePerPlay = new anchor.BN(basePricePerPlayStr);
   const platformFeeBps = parseInt(platformFeeBpsStr, 10);
-  const settlementCurrency = parsePubkey(
-    settlementCurrencyStr,
-    "SETTLEMENT_CURRENCY",
-  );
-  const maxDerivatives = parseInt(maxDerivativesStr, 10);
+  const currency = parsePubkey(currencyStr, "CURRENCY");
+  const maxDerivativesDepth = parseInt(maxDerivativesDepthStr, 10);
+  const maxLicenseTypes = parseInt(maxLicenseTypesStr, 10);
 
   if (basePricePerPlay.isNeg()) {
     console.error("Error: BASE_PRICE_PER_PLAY must be a positive number");
@@ -63,8 +63,12 @@ async function main() {
     console.error("Error: PLATFORM_FEE_BPS must be between 0 and 10000");
     process.exit(1);
   }
-  if (maxDerivatives < 0 || maxDerivatives > 65535) {
-    console.error("Error: MAX_DERIVATIVES must be between 0 and 65535");
+  if (maxDerivativesDepth < 0 || maxDerivativesDepth > 255) {
+    console.error("Error: MAX_DERIVATIVES_DEPTH must be between 0 and 255");
+    process.exit(1);
+  }
+  if (maxLicenseTypes < 1 || maxLicenseTypes > 65535) {
+    console.error("Error: MAX_LICENSE_TYPES must be between 1 and 65535");
     process.exit(1);
   }
 
@@ -74,10 +78,11 @@ async function main() {
 
   console.log(`\nConfig PDA: ${configPda.toBase58()}`);
   console.log(`Treasury PDA: ${treasuryPda.toBase58()}`);
-  console.log(`Settlement Currency: ${settlementCurrency.toBase58()}`);
+  console.log(`Currency: ${currency.toBase58()}`);
   console.log(`Base Price Per Play: ${basePricePerPlay.toString()}`);
   console.log(`Platform Fee BPS: ${platformFeeBps}`);
-  console.log(`Max Derivatives: ${maxDerivatives}`);
+  console.log(`Max Derivatives Depth: ${maxDerivativesDepth}`);
+  console.log(`Max License Types: ${maxLicenseTypes}`);
 
   // Check if config already exists
   try {
@@ -88,10 +93,8 @@ async function main() {
       `  Base Price Per Play: ${existing.basePricePerPlay.toString()}`,
     );
     console.error(`  Platform Fee BPS: ${existing.platformFeeBps}`);
-    console.error(
-      `  Settlement Currency: ${existing.settlementCurrency.toBase58()}`,
-    );
-    console.error(`  Max Derivatives: ${existing.maxDerivatives}`);
+    console.error(`  Currency: ${existing.currency.toBase58()}`);
+    console.error(`  Max Derivatives Depth: ${existing.maxDerivativesDepth}`);
     console.error(
       "\nUse 'anchor run kollect_update_platform_config' to modify existing config.",
     );
@@ -107,8 +110,9 @@ async function main() {
       .initializePlatform(
         basePricePerPlay,
         platformFeeBps,
-        settlementCurrency,
-        maxDerivatives,
+        currency,
+        maxDerivativesDepth,
+        maxLicenseTypes,
       )
       .rpc();
 
@@ -121,10 +125,8 @@ async function main() {
     console.log(`  Authority: ${config.authority.toBase58()}`);
     console.log(`  Base Price Per Play: ${config.basePricePerPlay.toString()}`);
     console.log(`  Platform Fee BPS: ${config.platformFeeBps}`);
-    console.log(
-      `  Settlement Currency: ${config.settlementCurrency.toBase58()}`,
-    );
-    console.log(`  Max Derivatives: ${config.maxDerivatives}`);
+    console.log(`  Currency: ${config.currency.toBase58()}`);
+    console.log(`  Max Derivatives Depth: ${config.maxDerivativesDepth}`);
     console.log(`  Treasury: ${config.treasury.toBase58()}`);
     console.log(`  Bump: ${config.bump}`);
 

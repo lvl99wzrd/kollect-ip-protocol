@@ -55,7 +55,7 @@ async function main() {
   const [configPda] = derivePlatformConfigPda(program.programId);
   const [treasuryPda] = derivePlatformTreasuryPda(program.programId);
 
-  // Fetch config to get settlement currency
+  // Fetch config to get currency
   let config;
   try {
     config = await program.account.platformConfig.fetch(configPda);
@@ -80,7 +80,7 @@ async function main() {
     process.exit(1);
   }
 
-  const mint = config.settlementCurrency;
+  const mint = config.currency;
 
   // Resolve treasury token account (ATA for treasury PDA)
   const treasuryTokenAccount = await getAssociatedTokenAddress(
@@ -94,7 +94,7 @@ async function main() {
   if (destinationOverride) {
     destination = destinationOverride;
   } else {
-    // Default to authority's ATA for settlement currency
+    // Default to authority's ATA for currency
     const ata = await getOrCreateAssociatedTokenAccount(
       provider.connection,
       (authority as anchor.Wallet).payer,
@@ -104,7 +104,7 @@ async function main() {
     destination = ata.address;
   }
 
-  console.log(`\nSettlement Currency: ${mint.toBase58()}`);
+  console.log(`\nCurrency: ${mint.toBase58()}`);
   console.log(`Treasury Token Account: ${treasuryTokenAccount.toBase58()}`);
   console.log(`Destination: ${destination.toBase58()}`);
   console.log(`Amount: ${amount.toString()}`);

@@ -4,10 +4,12 @@ use ip_core::state::entity::Entity;
 
 use crate::error::KollectError;
 use crate::events::LicensePurchased;
-use crate::state::{License, LicenseGrant, LicenseTemplate, PlatformConfig, PlatformTreasury};
+use crate::state::{
+    IpConfig, IpTreasury, License, LicenseGrant, LicenseTemplate, PlatformConfig, PlatformTreasury,
+};
 use crate::utils::seeds::{
-    LICENSE_GRANT_SEED, LICENSE_SEED, LICENSE_TEMPLATE_SEED, PLATFORM_CONFIG_SEED,
-    PLATFORM_TREASURY_SEED,
+    IP_CONFIG_SEED, IP_TREASURY_SEED, LICENSE_GRANT_SEED, LICENSE_SEED, LICENSE_TEMPLATE_SEED,
+    PLATFORM_CONFIG_SEED, PLATFORM_TREASURY_SEED,
 };
 use crate::utils::validation::{calculate_bps, validate_entity_controller};
 
@@ -63,7 +65,7 @@ pub struct PurchaseLicense<'info> {
     #[account(
         mut,
         token::authority = payer,
-        token::mint = license_template.currency,
+        token::mint = config.currency,
     )]
     pub payer_token_account: Box<Account<'info, TokenAccount>>,
 
@@ -71,16 +73,32 @@ pub struct PurchaseLicense<'info> {
     #[account(
         mut,
         token::authority = platform_treasury,
-        token::mint = license_template.currency,
+        token::mint = config.currency,
     )]
     pub platform_token_account: Box<Account<'info, TokenAccount>>,
 
-    /// IP owner's treasury token account to receive net payment.
+    /// IpConfig for the licensed IP (validates onboarding).
+    #[account(
+        seeds = [IP_CONFIG_SEED, license_template.ip_account.as_ref()],
+        bump = ip_config.bump,
+    )]
+    pub ip_config: Box<Account<'info, IpConfig>>,
+
+    /// IpTreasury to receive the net payment.
     #[account(
         mut,
-        token::mint = license_template.currency,
+        seeds = [IP_TREASURY_SEED, license_template.ip_account.as_ref()],
+        bump = ip_treasury.bump,
     )]
-    pub ip_owner_token_account: Box<Account<'info, TokenAccount>>,
+    pub ip_treasury: Box<Account<'info, IpTreasury>>,
+
+    /// IpTreasury's token account to receive net payment.
+    #[account(
+        mut,
+        token::authority = ip_treasury,
+        token::mint = config.currency,
+    )]
+    pub ip_treasury_token_account: Box<Account<'info, TokenAccount>>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -130,19 +148,27 @@ pub fn handler(ctx: Context<PurchaseLicense>) -> Result<()> {
             )?;
         }
 
-        // Transfer net to IP owner
+        // Transfer net to IP treasury
         if net_to_owner > 0 {
             token::transfer(
                 CpiContext::new(
                     ctx.accounts.token_program.to_account_info(),
                     Transfer {
                         from: ctx.accounts.payer_token_account.to_account_info(),
-                        to: ctx.accounts.ip_owner_token_account.to_account_info(),
+                        to: ctx.accounts.ip_treasury_token_account.to_account_info(),
                         authority: ctx.accounts.payer.to_account_info(),
                     },
                 ),
                 net_to_owner,
             )?;
+
+            // Update IpTreasury counter
+            ctx.accounts.ip_treasury.total_earned = ctx
+                .accounts
+                .ip_treasury
+                .total_earned
+                .checked_add(net_to_owner)
+                .ok_or(KollectError::ArithmeticOverflow)?;
         }
     }
 

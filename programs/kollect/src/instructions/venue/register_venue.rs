@@ -1,6 +1,5 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{MAX_OPERATING_HOURS, MAX_VENUE_NAME_LENGTH};
 use crate::error::KollectError;
 use crate::events::VenueRegistered;
 use crate::state::{PlatformConfig, VenueAccount};
@@ -9,10 +8,7 @@ use crate::utils::seeds::{PLATFORM_CONFIG_SEED, VENUE_SEED};
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
 pub struct RegisterVenueParams {
     pub venue_authority: Pubkey,
-    pub name: [u8; MAX_VENUE_NAME_LENGTH],
-    pub venue_type: u8,
-    pub capacity: u32,
-    pub operating_hours: u8,
+    pub cid: [u8; 96],
     pub multiplier_bps: u16,
 }
 
@@ -46,15 +42,7 @@ pub fn handler(
     venue_id: u64,
     params: RegisterVenueParams,
 ) -> Result<()> {
-    require!(
-        VenueAccount::is_valid_venue_type(params.venue_type),
-        KollectError::InvalidVenueType
-    );
-    require!(params.capacity > 0, KollectError::InvalidCapacity);
-    require!(
-        params.operating_hours > 0 && params.operating_hours <= MAX_OPERATING_HOURS,
-        KollectError::InvalidOperatingHours
-    );
+    require!(params.cid.iter().any(|&b| b != 0), KollectError::InvalidCid);
     require!(params.multiplier_bps > 0, KollectError::InvalidMultiplier);
 
     let clock = Clock::get()?;
@@ -62,10 +50,7 @@ pub fn handler(
 
     venue.venue_id = venue_id;
     venue.authority = params.venue_authority;
-    venue.name = params.name;
-    venue.venue_type = params.venue_type;
-    venue.capacity = params.capacity;
-    venue.operating_hours = params.operating_hours;
+    venue.cid = params.cid;
     venue.multiplier_bps = params.multiplier_bps;
     venue.is_active = true;
     venue.total_commitments = 0;
@@ -77,8 +62,7 @@ pub fn handler(
         venue: venue.key(),
         venue_id,
         authority: params.venue_authority,
-        venue_type: params.venue_type,
-        capacity: params.capacity,
+        cid: params.cid,
         registered_at: venue.registered_at,
     });
 
