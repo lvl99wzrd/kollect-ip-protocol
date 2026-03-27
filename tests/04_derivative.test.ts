@@ -9,7 +9,7 @@ import {
   mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import { padBytes } from "../utils/helper";
+import { padBytes, deriveEntityPda, getEntityCount } from "../utils/helper";
 
 const signerMeta = (pubkey: PublicKey) => ({
   pubkey,
@@ -207,21 +207,17 @@ describe("ip_core derivative with kollect license", () => {
     }
 
     // Create entity
-    const handle = padBytes("deriv_owner2", 32);
-    [entityPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("entity"),
-        creator.publicKey.toBuffer(),
-        Buffer.from(handle),
-      ],
+    const index = await getEntityCount(ipCoreProgram, creator.publicKey);
+    [entityPda] = deriveEntityPda(
       ipCoreProgram.programId,
+      creator.publicKey,
+      index,
     );
 
-    try {
-      await ipCoreProgram.methods.createEntity(handle).rpc();
-    } catch {
-      // Already created
-    }
+    await ipCoreProgram.methods
+      .createEntity()
+      .accountsPartial({ entity: entityPda })
+      .rpc();
 
     // Create parent IP
     const parentHash = randomHash();

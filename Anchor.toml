@@ -6,12 +6,12 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-ip_core = "ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap"
-kollect = "AuhX96zooudoN7Ad6dML8ehnFmqhFS8pvDU4AvSMRVKD"
+ip_core = "Eo5G2gNsVKR2orqpqYippPwxjaZDPX3gALCtV9jU6wWm"
+kollect = "P5UcEmMdxHvLFmkE743XzEg5pnN5csNb8jUxTWj6VoJ"
 
 [programs.localnet]
-ip_core = "ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap"
-kollect = "AuhX96zooudoN7Ad6dML8ehnFmqhFS8pvDU4AvSMRVKD"
+ip_core = "Eo5G2gNsVKR2orqpqYippPwxjaZDPX3gALCtV9jU6wWm"
+kollect = "P5UcEmMdxHvLFmkE743XzEg5pnN5csNb8jUxTWj6VoJ"
 
 [registry]
 url = "https://api.apr.dev"
@@ -29,6 +29,13 @@ get_metadata = "npx ts-node scripts/get_metadata.ts"
 get_schemas = "npx ts-node scripts/get_schemas.ts"
 initialize_config = "npx ts-node scripts/initialize_config.ts"
 initialize_treasury = "npx ts-node scripts/initialize_treasury.ts"
+kollect_get_entity_treasury = "npx ts-node scripts/kollect/get_entity_treasury.ts"
+kollect_get_platform_config = "npx ts-node scripts/kollect/get_platform_config.ts"
+kollect_initialize_entity_treasury = "npx ts-node scripts/kollect/initialize_entity_treasury.ts"
+kollect_initialize_platform = "npx ts-node scripts/kollect/initialize_platform.ts"
+kollect_update_platform_config = "npx ts-node scripts/kollect/update_platform_config.ts"
+kollect_withdraw_entity_earnings = "npx ts-node scripts/kollect/withdraw_entity_earnings.ts"
+kollect_withdraw_platform_fees = "npx ts-node scripts/kollect/withdraw_platform_fees.ts"
 register_schema = "npx ts-node scripts/register_schema.ts"
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
 update_config = "npx ts-node scripts/update_config.ts"

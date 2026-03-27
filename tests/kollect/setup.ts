@@ -8,7 +8,7 @@ import {
   getOrCreateAssociatedTokenAccount,
   mintTo,
 } from "@solana/spl-token";
-import { padBytes } from "../../utils/helper";
+import { padBytes, deriveEntityPda, getEntityCount } from "../../utils/helper";
 
 // Re-export helper utilities
 export { padBytes } from "../../utils/helper";
@@ -186,31 +186,29 @@ export async function initializeIpCorePrerequisites(): Promise<IpCoreState> {
 
 export interface TestEntity {
   entityPda: PublicKey;
-  handle: number[];
 }
 
 /**
- * Create an ip_core Entity (idempotent).
+ * Create an ip_core Entity using counter-based sequential index.
  */
-export async function createTestEntity(handle: string): Promise<TestEntity> {
+export async function createTestEntity(label?: string): Promise<TestEntity> {
   const provider = getProvider();
   const { ipCore } = getPrograms();
   const creator = provider.wallet as anchor.Wallet;
 
-  const handleBytes = padBytes(handle, 32);
-
-  const [entityPda] = PublicKey.findProgramAddressSync(
-    [ENTITY_SEED, creator.publicKey.toBuffer(), Buffer.from(handleBytes)],
+  const index = await getEntityCount(ipCore, creator.publicKey);
+  const [entityPda] = deriveEntityPda(
     ipCore.programId,
+    creator.publicKey,
+    index,
   );
 
-  try {
-    await ipCore.account.entity.fetch(entityPda);
-  } catch {
-    await ipCore.methods.createEntity(handleBytes).rpc();
-  }
+  await ipCore.methods
+    .createEntity()
+    .accountsPartial({ entity: entityPda })
+    .rpc();
 
-  return { entityPda, handle: handleBytes };
+  return { entityPda };
 }
 
 // ─── IP helpers ─────────────────────────────────────────────────────────────
