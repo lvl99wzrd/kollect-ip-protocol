@@ -7,7 +7,6 @@ use crate::error::KollectError;
 use crate::events::EntityTreasuryInitialized;
 use crate::state::{EntityTreasury, PlatformConfig};
 use crate::utils::seeds::{ENTITY_TREASURY_SEED, PLATFORM_CONFIG_SEED};
-use crate::utils::validation::validate_entity_controller;
 
 #[derive(Accounts)]
 pub struct InitializeEntityTreasury<'info> {
@@ -31,6 +30,7 @@ pub struct InitializeEntityTreasury<'info> {
     #[account(
         seeds = [PLATFORM_CONFIG_SEED],
         bump = config.bump,
+        constraint = config.authority == payer.key() @ KollectError::InvalidAuthority,
     )]
     pub config: Account<'info, PlatformConfig>,
 
@@ -51,12 +51,10 @@ pub struct InitializeEntityTreasury<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
-    // remaining_accounts: entity controller signer
 }
 
 pub fn handler(ctx: Context<InitializeEntityTreasury>, authority: Pubkey) -> Result<()> {
     let entity = &ctx.accounts.entity;
-    validate_entity_controller(entity, ctx.remaining_accounts)?;
 
     let treasury = &mut ctx.accounts.entity_treasury;
     treasury.entity = entity.key();

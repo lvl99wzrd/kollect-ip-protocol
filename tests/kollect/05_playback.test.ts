@@ -16,7 +16,6 @@ import {
   derivePlaybackPda,
   deriveSettlementPda,
   randomHash,
-  signerMeta,
   venueIdBuffer,
   venueCid,
 } from "./setup";
@@ -334,7 +333,6 @@ describe("kollect playback & settlement", () => {
         await kollect.methods
           .initializeEntityTreasury(authority.publicKey)
           .accounts({ entity: entity.entityPda, currencyMint: mint })
-          .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
       }
 
@@ -616,7 +614,6 @@ describe("kollect playback & settlement", () => {
         await kollect.methods
           .initializeEntityTreasury(authority.publicKey)
           .accounts({ entity: entity.entityPda, currencyMint: mint })
-          .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
 
         const ip = await createTestIp(entity.entityPda);
@@ -795,7 +792,6 @@ describe("kollect playback & settlement", () => {
       await kollect.methods
         .initializeEntityTreasury(authority.publicKey)
         .accounts({ entity: entity.entityPda, currencyMint: mint })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
 
       const ip = await createTestIp(entity.entityPda);
@@ -889,7 +885,6 @@ describe("kollect playback & settlement", () => {
       await kollect.methods
         .initializeEntityTreasury(authority.publicKey)
         .accounts({ entity: entity.entityPda, currencyMint: mint })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
 
       const ip = await createTestIp(entity.entityPda);
@@ -1072,7 +1067,6 @@ describe("kollect playback & settlement", () => {
       await kollect.methods
         .initializeEntityTreasury(authority.publicKey)
         .accounts({ entity: entity.entityPda, currencyMint: mint })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
 
       const ip = await createTestIp(entity.entityPda);

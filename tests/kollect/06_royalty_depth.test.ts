@@ -252,7 +252,6 @@ describe("kollect royalty depth enforcement", () => {
       await kollect.methods
         .initializeEntityTreasury(authority.publicKey)
         .accounts({ entity: entityPda, currencyMint: mint })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
     }
 

@@ -301,7 +301,6 @@ describe("ip_core derivative with kollect license", () => {
       await kollectProgram.methods
         .initializeEntityTreasury(creator.publicKey)
         .accountsPartial({ entity: entityPda, currencyMint: mint })
-        .remainingAccounts([signerMeta(creator.publicKey)])
         .rpc();
     }
 

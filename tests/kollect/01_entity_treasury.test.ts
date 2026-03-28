@@ -14,8 +14,6 @@ import {
   createTestEntity,
   deriveEntityTreasuryPda,
   derivePlatformConfigPda,
-  signerMeta,
-  padBytes,
 } from "./setup";
 
 describe("kollect entity treasury", () => {
@@ -50,7 +48,6 @@ describe("kollect entity treasury", () => {
           entity: entityPda,
           currencyMint: settlementMint,
         })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
 
       const treasury = await kollect.account.entityTreasury.fetch(
@@ -72,7 +69,6 @@ describe("kollect entity treasury", () => {
             entity: entityPda,
             currencyMint: settlementMint,
           })
-          .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
@@ -80,30 +76,29 @@ describe("kollect entity treasury", () => {
       }
     });
 
-    it("fails with non-controller signer", async () => {
-      // Create a new entity
-      const testEntity = await createTestEntity("ctrl_treasury_test");
-      const testTreasuryPda = deriveEntityTreasuryPda(
-        testEntity.entityPda,
-        kollect.programId,
-      );
+    it("fails with non-admin payer", async () => {
+      const testEntity = await createTestEntity("admin_treasury_test");
 
-      const fakeController = Keypair.generate();
+      const nonAdmin = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(
+        nonAdmin.publicKey,
+        1_000_000_000,
+      );
+      await provider.connection.confirmTransaction(sig);
 
       try {
-        // Pass a non-controller signer
         await kollect.methods
           .initializeEntityTreasury(authority.publicKey)
           .accounts({
+            payer: nonAdmin.publicKey,
             entity: testEntity.entityPda,
             currencyMint: settlementMint,
           })
-          .remainingAccounts([signerMeta(fakeController.publicKey)])
-          .signers([fakeController])
+          .signers([nonAdmin])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
-        expect(err.toString()).to.include("InsufficientSignatures");
+        expect(err.toString()).to.include("InvalidAuthority");
       }
     });
   });

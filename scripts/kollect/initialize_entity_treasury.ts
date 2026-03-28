@@ -8,19 +8,17 @@
  *   ENTITY_PUBKEY - The ip_core Entity PDA pubkey (required)
  *   AUTHORITY     - Treasury authority pubkey (optional, defaults to signer)
  *
- * Note: Signer must be the entity's controller (passed via remainingAccounts).
+ * Note: Signer must be the platform admin (config.authority).
  */
 
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { IpCore } from "../../target/types/ip_core";
 import { Kollect } from "../../target/types/kollect";
 import {
   deriveEntityTreasuryPda,
   requireEnv,
   parsePubkey,
   parseOptionalPubkey,
-  signerMeta,
   getCluster,
   explorerUrl,
   explorerTxUrl,
@@ -31,7 +29,6 @@ async function main() {
   anchor.setProvider(provider);
 
   const kollect = anchor.workspace.Kollect as Program<Kollect>;
-  const ipCore = anchor.workspace.IpCore as Program<IpCore>;
   const signer = provider.wallet;
   const cluster = getCluster(provider.connection.rpcEndpoint);
 
@@ -39,7 +36,6 @@ async function main() {
   console.log(`Cluster: ${cluster}`);
   console.log(`Signer: ${signer.publicKey.toBase58()}`);
   console.log(`Kollect Program ID: ${kollect.programId.toBase58()}`);
-  console.log(`IpCore Program ID: ${ipCore.programId.toBase58()}`);
 
   // Read environment variables
   const entityPubkeyStr = requireEnv("ENTITY_PUBKEY", "<entity_pda_pubkey>");
@@ -50,27 +46,8 @@ async function main() {
   );
   const treasuryAuthority = authorityOverride || signer.publicKey;
 
-  // Fetch entity from ip_core to get controller
-  let entity;
-  try {
-    entity = await ipCore.account.entity.fetch(entityPubkey);
-  } catch {
-    console.error(`\nError: Entity not found at ${entityPubkey.toBase58()}`);
-    console.error("Verify the ENTITY_PUBKEY is a valid ip_core Entity PDA.");
-    process.exit(1);
-  }
-
   console.log(`\nEntity: ${entityPubkey.toBase58()}`);
-  console.log(`Entity Controller: ${entity.controller.toBase58()}`);
   console.log(`Treasury Authority: ${treasuryAuthority.toBase58()}`);
-
-  // Verify signer is the entity controller
-  if (!entity.controller.equals(signer.publicKey)) {
-    console.error("\nError: Signer is not the entity controller!");
-    console.error(`  Entity controller: ${entity.controller.toBase58()}`);
-    console.error(`  Your wallet: ${signer.publicKey.toBase58()}`);
-    process.exit(1);
-  }
 
   // Derive entity treasury PDA
   const [entityTreasuryPda] = deriveEntityTreasuryPda(
@@ -102,7 +79,6 @@ async function main() {
       .accounts({
         entity: entityPubkey,
       })
-      .remainingAccounts([signerMeta(signer.publicKey)])
       .rpc();
 
     console.log("\n✓ Entity treasury initialized successfully!");

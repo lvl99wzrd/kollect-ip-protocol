@@ -46,7 +46,6 @@ describe("kollect ip onboarding", () => {
       await kollect.methods
         .initializeEntityTreasury(authority.publicKey)
         .accounts({ entity: entityPda, currencyMint: mint })
-        .remainingAccounts([signerMeta(authority.publicKey)])
         .rpc();
     }
   });
@@ -132,7 +131,6 @@ describe("kollect ip onboarding", () => {
         await kollect.methods
           .initializeEntityTreasury(authority.publicKey)
           .accounts({ entity: otherEntity.entityPda, currencyMint: mint })
-          .remainingAccounts([signerMeta(authority.publicKey)])
           .rpc();
       }
 
