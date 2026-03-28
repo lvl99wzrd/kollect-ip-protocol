@@ -250,15 +250,11 @@ pub fn handler<'a, 'b, 'c, 'info>(
         let ip_config_data = ip_config_info.try_borrow_data()?;
         let ip_config = IpConfig::try_deserialize(&mut &ip_config_data[..])
             .map_err(|_| error!(KollectError::IpNotOnboarded))?;
+        let base_price = ip_config
+            .price_per_play_override
+            .unwrap_or(ctx.accounts.config.base_price_per_play);
         let effective_price_per_play =
-            if let Some(override_price) = ip_config.price_per_play_override {
-                override_price
-            } else {
-                calculate_bps(
-                    ctx.accounts.config.base_price_per_play,
-                    ctx.accounts.venue.multiplier_bps,
-                )?
-            };
+            calculate_bps(base_price, ctx.accounts.venue.multiplier_bps)?;
         let expected_amount = effective_price_per_play
             .checked_mul(distribution.plays)
             .ok_or(KollectError::ArithmeticOverflow)?;
@@ -399,8 +395,7 @@ pub fn handler<'a, 'b, 'c, 'info>(
                     .checked_add(royalty_amount)
                     .ok_or(KollectError::ArithmeticOverflow)?;
                 let split_serialized = split_account.try_to_vec()?;
-                split_data_mut[8..8 + split_serialized.len()]
-                    .copy_from_slice(&split_serialized);
+                split_data_mut[8..8 + split_serialized.len()].copy_from_slice(&split_serialized);
                 drop(split_data_mut);
 
                 net_to_ip = net_to_ip

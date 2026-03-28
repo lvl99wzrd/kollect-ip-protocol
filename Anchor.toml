@@ -10,8 +10,8 @@ ip_core = "8PbUujsm515KzAWprb42q2xFqPfqiFHpjy9HGaj6KuAj"
 kollect = "BMktRAd5g9pogHhu8QxaA77xvkfo2cZbC8ewXp4khe34"
 
 [programs.localnet]
-ip_core = "JBvD4TmNeQxwWPRvvcuXrqRcj5m9eKEMK2M65m8VuRNz"
-kollect = "8h11nLwuqzMfg5AoVqpNcxFqVGp5oNUQrESLJaPC3a5A"
+ip_core = "BYgKV6UwKSkhCuzndmqp3WwpcaUzEMxVG4Lvnp2ahMew"
+kollect = "AktoxndpdZfTsAdqAUFsoBPvr6dN7EoCREqDUYKqarB8"
 
 [registry]
 url = "https://api.apr.dev"

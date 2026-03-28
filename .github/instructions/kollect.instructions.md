@@ -38,11 +38,11 @@ When an instruction requires an `ip_core` account:
 - Deserialize manually or use Anchor's `Account<>` with `owner` constraint
 - NEVER use CPI to mutate `ip_core` state
 
-**Entity multisig validation**: Always perform a cross-program read of the `Entity` account to get the current `controllers` and `signature_threshold`. Never cache or replicate controller lists — they may change at any time in `ip_core`.
+**Entity controller validation**: Always perform a cross-program read of the `Entity` account to get the current `controller`. Never cache or replicate the controller — it may change at any time in `ip_core`. For multisig functionality, the controller can be set to an external multisig PDA (e.g., Squads).
 
 Key `ip_core` references:
 
-- `Entity` – PDA seeds `["entity", creator, handle]` — fields: `controllers`, `signature_threshold`
+- `Entity` – PDA seeds `["entity", creator, &index.to_le_bytes()]` — fields: `controller: Pubkey`
 - `IpAccount` – PDA seeds `["ip", registrant_entity, content_hash]` — fields: `current_owner_entity`
 - `DerivativeLink` – PDA seeds `["derivative", parent_ip, child_ip]` — fields: `license`, `parent_ip`, `child_ip`
 - `ip_core` program ID: `CSSfTXVfCUmvZCEjPZxFne5EPewzTGCyYAybLNihLQM1`
@@ -57,15 +57,16 @@ Platform-wide configuration. One instance per deployment.
 
 **PDA Seeds:** `["platform_config"]`
 
-| Field               | Type   | Mutability | Description                                                                |
-| ------------------- | ------ | ---------- | -------------------------------------------------------------------------- |
-| authority           | Pubkey | mutable    | Platform admin, can update config and submit playback                      |
-| platform_fee_bps    | u16    | mutable    | Platform fee in basis points (e.g. 500 = 5%)                               |
-| base_price_per_play | u64    | mutable    | Default price per play in lamports/tokens                                  |
-| currency            | Pubkey | mutable    | SPL token mint for all on-chain payments (license purchases + settlements) |
-| max_derivatives     | u16    | mutable    | Max derivative licenses per IP on this platform                            |
-| treasury            | Pubkey | mutable    | Platform treasury PDA reference                                            |
-| bump                | u8     | immutable  | PDA bump                                                                   |
+| Field                 | Type   | Mutability | Description                                                                |
+| --------------------- | ------ | ---------- | -------------------------------------------------------------------------- |
+| authority             | Pubkey | mutable    | Platform admin, can update config and submit playback                      |
+| platform_fee_bps      | u16    | mutable    | Platform fee in basis points (e.g. 500 = 5%)                               |
+| base_price_per_play   | u64    | mutable    | Default price per play in lamports/tokens                                  |
+| currency              | Pubkey | immutable  | SPL token mint for all on-chain payments (license purchases + settlements) |
+| max_derivatives_depth | u8     | mutable    | Max royalty chain depth during settlement                                  |
+| max_license_types     | u16    | mutable    | Max license templates per IP on this platform                              |
+| treasury              | Pubkey | mutable    | Platform treasury PDA reference                                            |
+| bump                  | u8     | immutable  | PDA bump                                                                   |
 
 ### 3.2 PlatformTreasury
 
@@ -93,6 +94,7 @@ Per-IP onboarding on the kollect platform. Not all `ip_core` IPs are registered 
 | owner_entity            | Pubkey      | mutable    | Current owning Entity (synced from ip_core)      |
 | price_per_play_override | Option<u64> | mutable    | Overrides platform base_price_per_play if Some   |
 | is_active               | bool        | mutable    | Whether this IP is actively licensed on platform |
+| license_template_count  | u16         | mutable    | Number of license templates created for this IP  |
 | onboarded_at            | i64         | immutable  | Unix timestamp                                   |
 | updated_at              | i64         | mutable    | Unix timestamp                                   |
 | bump                    | u8          | immutable  | PDA bump                                         |
@@ -138,20 +140,17 @@ Registered venue that plays music tracked by the platform.
 
 `venue_id` is a `u64` assigned by the off-chain platform. Deterministic from the off-chain venue record.
 
-| Field             | Type     | Mutability | Description                                                      |
-| ----------------- | -------- | ---------- | ---------------------------------------------------------------- |
-| venue_id          | u64      | immutable  | Off-chain platform venue identifier                              |
-| authority         | Pubkey   | mutable    | Venue operator wallet                                            |
-| name              | [u8; 64] | mutable    | Venue name (fixed-size, UTF-8 padded)                            |
-| venue_type        | u8       | mutable    | Enum: Bar=0, Club=1, Restaurant=2, Retail=3, Arena=4, Festival=5 |
-| capacity          | u32      | mutable    | Venue capacity (number of people)                                |
-| operating_hours   | u8       | mutable    | Daily operating hours (1-24)                                     |
-| multiplier_bps    | u16      | mutable    | Venue price multiplier in bps (10000 = 1x)                       |
-| is_active         | bool     | mutable    | Whether venue is active on the platform                          |
-| total_commitments | u64      | mutable    | Total playback commitments submitted                             |
-| registered_at     | i64      | immutable  | Unix timestamp                                                   |
-| updated_at        | i64      | mutable    | Unix timestamp                                                   |
-| bump              | u8       | immutable  | PDA bump                                                         |
+| Field             | Type     | Mutability | Description                                          |
+| ----------------- | -------- | ---------- | ---------------------------------------------------- |
+| venue_id          | u64      | immutable  | Off-chain platform venue identifier                  |
+| authority         | Pubkey   | mutable    | Venue operator wallet                                |
+| cid               | [u8; 96] | mutable    | Content identifier (IPFS CID or similar, fixed-size) |
+| multiplier_bps    | u16      | mutable    | Venue price multiplier in bps (10000 = 1x)           |
+| is_active         | bool     | mutable    | Whether venue is active on the platform              |
+| total_commitments | u64      | mutable    | Total playback commitments submitted                 |
+| registered_at     | i64      | immutable  | Unix timestamp                                       |
+| updated_at        | i64      | mutable    | Unix timestamp                                       |
+| bump              | u8       | immutable  | PDA bump                                             |
 
 ### 3.7 PlaybackCommitment
 
@@ -220,7 +219,7 @@ Programmable license terms created by an IP owner for an onboarded IP. This is t
 | creator_entity | Pubkey   | immutable  | Entity that created this template (IP owner) |
 | template_name  | [u8; 32] | immutable  | Unique name for this template                |
 | price          | u64      | mutable    | Price to purchase a grant (0 = free)         |
-| max_grants     | u16      | mutable    | Max grants issuable (0 = unlimited)          |
+| max_grants     | u16      | immutable  | Max grants issuable (0 = unlimited)          |
 | current_grants | u16      | mutable    | Number of grants currently issued            |
 | grant_duration | i64      | mutable    | Duration in seconds (0 = perpetual)          |
 | is_active      | bool     | mutable    | Whether new grants can be purchased          |
@@ -348,6 +347,7 @@ During settlement, the system walks the RoyaltySplit chain for each IP:
 | onboard_ip       | IpConfig, IpTreasury, (RoyaltySplit if derivative) | platform authority                               |
 | update_ip_config | IpConfig                                           | Entity controller(s) — cross-program read Entity |
 | deactivate_ip    | IpConfig                                           | platform authority                               |
+| reactivate_ip    | IpConfig                                           | platform authority                               |
 
 ### Entity Treasury
 
@@ -365,6 +365,7 @@ During settlement, the system walks the RoyaltySplit chain for each IP:
 | update_venue            | VenueAccount     | venue.authority    |
 | update_venue_multiplier | VenueAccount     | platform authority |
 | deactivate_venue        | VenueAccount     | platform authority |
+| reactivate_venue        | VenueAccount     | platform authority |
 
 ### Licensing
 
@@ -534,7 +535,7 @@ During settlement, for each IP in the `IpDistribution` list:
 - All timestamps use `Clock::get()?.unix_timestamp`.
 - All fee/price/royalty arithmetic uses checked operations.
 - `ip_core` accounts are READ-ONLY inputs — never CPI-mutate them.
-- Entity multisig: always cross-program read `Entity` from `ip_core` for current controllers/threshold. Never cache.
+- Entity controller: always cross-program read `Entity` from `ip_core` for current `controller`. Never cache. For multisig, the controller can be set to an external multisig PDA (e.g., Squads).
 - Settlement period: weekly boundaries (hardcoded for POC). Payment can occur anytime — no `period_end` wait required. Multiple partial settlements per period allowed.
 - `MAX_ROYALTY_CHAIN_DEPTH` = 3 (hardcoded constant). Settlement will not walk royalty chains deeper than 3 levels.
 - Platform fee (`platform_fee_bps`) applies to both playback settlements and license purchases (platform sponsors gas fees).
@@ -589,6 +590,14 @@ Define errors specific to `kollect`:
 - InvalidCurrency (wrong SPL mint for payment)
 - PlayCountMismatch (sum of distributions.plays != sum of commitments.total_plays)
 - InvalidSettlementTimestamp (settled_at not within tolerance of on-chain clock)
+- InvalidRoyaltySplitPda (royalty split PDA mismatch)
+- MaxLicenseTypesReached (IP has reached max_license_types from config)
+- InvalidGrantDuration (grant duration value invalid)
+- InvalidShareBps (share basis points exceeds 10000)
+- IpAlreadyActive (reactivating an already active IP)
+- VenueAlreadyActive (reactivating an already active venue)
+- InsufficientVenueBalance (venue token account has insufficient funds for settlement)
+- InvalidCid (empty or invalid content identifier)
 
 ---
 
@@ -599,14 +608,15 @@ Emit events for all state changes:
 ### Platform
 
 - **PlatformInitialized**: config, authority, base_price_per_play, platform_fee_bps
-- **PlatformConfigUpdated**: config, changed fields (uses `currency` field name)
+- **PlatformConfigUpdated**: config, authority, base_price_per_play, platform_fee_bps, max_derivatives_depth, max_license_types
 - **PlatformFeesWithdrawn**: treasury, amount, destination
 
 ### IP Onboarding
 
 - **IpOnboarded**: ip_config, ip_account, owner_entity, price_override, is_derivative, onboarded_at
-- **IpConfigUpdated**: ip_config, changed fields
+- **IpConfigUpdated**: ip_config, price_per_play_override, updated_at
 - **IpDeactivated**: ip_config, deactivated_at
+- **IpReactivated**: ip_config, reactivated_at
 
 ### Entity Treasury
 
@@ -616,17 +626,18 @@ Emit events for all state changes:
 
 ### Venue
 
-- **VenueRegistered**: venue, venue_id, authority, venue_type, capacity, registered_at
-- **VenueUpdated**: venue, changed fields
+- **VenueRegistered**: venue, venue_id, authority, cid, registered_at
+- **VenueUpdated**: venue, cid, updated_at
 - **VenueMultiplierUpdated**: venue, old_multiplier, new_multiplier, updated_by
 - **VenueDeactivated**: venue, deactivated_at
+- **VenueReactivated**: venue, reactivated_at
 
 ### Licensing
 
 - **LicenseTemplateCreated**: template, license, ip_account, creator_entity, template_name, price, max_grants
-- **LicenseTemplateUpdated**: template, changed fields
+- **LicenseTemplateUpdated**: template, price, max_grants, grant_duration, is_active, updated_at
 - **RoyaltyPolicyCreated**: policy, template, derivative_share_bps, allow_remix, allow_cover, allow_sample
-- **RoyaltyPolicyUpdated**: policy, changed fields
+- **RoyaltyPolicyUpdated**: policy, derivative_share_bps, allow_remix, allow_cover, allow_sample, attribution_required, commercial_use, updated_at
 - **LicensePurchased**: grant, template, grantee_entity, origin_ip, price_paid, platform_fee, net_to_owner, expiration
 - **RoyaltySplitCreated**: split, derivative_ip, origin_ip, share_bps (emitted during onboard_ip when derivative)
 
@@ -711,7 +722,7 @@ programs/kollect/
 - Each instruction needs a corresponding test in `tests/`
 - Test files follow the pattern `XX_feature.test.ts`
 - Validate all PDA derivations match seeds spec
-- Test entity multisig threshold enforcement via cross-program read
+- Test entity controller threshold enforcement via cross-program read
 - Test settlement math with edge cases (overflow, zero plays, rounding)
 - Test royalty bottom-to-top chain distribution (2-3 levels deep)
 - Test cross-program account validation (ip_core ownership checks)

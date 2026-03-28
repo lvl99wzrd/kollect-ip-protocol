@@ -143,33 +143,22 @@ describe("kollect entity treasury", () => {
       destinationTokenAccount = destAta.address;
     });
 
-    it("withdraws entity earnings", async () => {
-      const beforeDest = await getAccount(
-        provider.connection,
-        destinationTokenAccount,
-      );
-
-      const withdrawAmount = new anchor.BN(500_000);
-
-      await kollect.methods
-        .withdrawEntityEarnings(withdrawAmount)
-        .accountsPartial({
-          entityTreasury: entityTreasuryPda,
-          treasuryTokenAccount,
-          destination: destinationTokenAccount,
-        })
-        .rpc();
-
-      const afterDest = await getAccount(
-        provider.connection,
-        destinationTokenAccount,
-      );
-      expect(Number(afterDest.amount - beforeDest.amount)).to.equal(500_000);
-
-      const treasury = await kollect.account.entityTreasury.fetch(
-        entityTreasuryPda,
-      );
-      expect(treasury.totalWithdrawn.toNumber()).to.equal(500_000);
+    it("fails to withdraw more than earned", async () => {
+      // Entity treasury has tokens (via mintTo) but total_earned=0.
+      // The bounds check prevents withdrawal beyond tracked earnings.
+      try {
+        await kollect.methods
+          .withdrawEntityEarnings(new anchor.BN(500_000))
+          .accountsPartial({
+            entityTreasury: entityTreasuryPda,
+            treasuryTokenAccount,
+            destination: destinationTokenAccount,
+          })
+          .rpc();
+        expect.fail("Should have failed");
+      } catch (err) {
+        expect(err.toString()).to.include("InsufficientPayment");
+      }
     });
 
     it("fails with wrong authority", async () => {

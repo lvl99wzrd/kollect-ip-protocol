@@ -42,6 +42,12 @@ pub fn handler(ctx: Context<WithdrawEntityEarnings>, amount: u64) -> Result<()> 
     let entity_key = entity_treasury.entity;
     let bump = entity_treasury.bump;
 
+    let available = entity_treasury
+        .total_earned
+        .checked_sub(entity_treasury.total_withdrawn)
+        .ok_or(KollectError::ArithmeticOverflow)?;
+    require!(amount <= available, KollectError::InsufficientPayment);
+
     entity_treasury.total_withdrawn = entity_treasury
         .total_withdrawn
         .checked_add(amount)

@@ -517,4 +517,179 @@ describe("kollect royalty depth enforcement", () => {
       expect(record.ipCount).to.equal(1);
     });
   });
+
+  // ─── T13: max_derivatives_depth=3 full chain ──────────────────────────
+
+  describe("settle_period with max_derivatives_depth=3", () => {
+    it("distributes royalties through the full A→B→C→D chain", async () => {
+      // Increase depth to 3 (was 2 from previous test)
+      await kollect.methods
+        .updatePlatformConfig({
+          newAuthority: null,
+          newBasePricePerPlay: null,
+          newPlatformFeeBps: null,
+          newMaxDerivativesDepth: 3,
+          newMaxLicenseTypes: null,
+        })
+        .rpc();
+
+      const config = await kollect.account.platformConfig.fetch(
+        platformConfigPda,
+      );
+      expect(config.maxDerivativesDepth).to.equal(3);
+
+      // Submit 7 new days of playback (different period to avoid collision)
+      const newPeriodStart = dayTimestampDaysAgo(28);
+      const newCommitmentPdas: PublicKey[] = [];
+
+      for (let i = 0; i < 7; i++) {
+        const dayTs = newPeriodStart + i * SECONDS_PER_DAY;
+        newCommitmentPdas.push(
+          derivePlaybackPda(venuePda, dayTs, kollect.programId),
+        );
+
+        await kollect.methods
+          .submitPlayback(
+            new anchor.BN(dayTs),
+            randomHash(),
+            new anchor.BN(100),
+          )
+          .accountsPartial({ venue: venuePda })
+          .rpc();
+      }
+
+      // Ensure venue has sufficient tokens
+      await mintTo(
+        provider.connection,
+        authority.payer,
+        mint,
+        venueTokenAccount,
+        authority.publicKey,
+        1_000_000_000,
+      );
+
+      const ipConfigD = deriveIpConfigPda(ipD, kollect.programId);
+      const settledAt = Math.floor(Date.now() / 1000);
+      const settlementPda = deriveSettlementPda(
+        venuePda,
+        newPeriodStart,
+        settledAt,
+        kollect.programId,
+      );
+
+      const distributionAmount = 140_000_000;
+      const distributions = [
+        {
+          ipAccount: ipD,
+          amount: new anchor.BN(distributionAmount),
+          plays: new anchor.BN(700),
+        },
+      ];
+
+      // Record balances before settlement
+      const balanceBefore = async (ata: PublicKey) => {
+        try {
+          const info = await provider.connection.getTokenAccountBalance(ata);
+          return Number(info.value.amount);
+        } catch {
+          return 0;
+        }
+      };
+
+      const ipABefore = await balanceBefore(ipTreasuryAtaA);
+      const ipBBefore = await balanceBefore(ipTreasuryAtaB);
+      const ipCBefore = await balanceBefore(ipTreasuryAtaC);
+      const ipDBefore = await balanceBefore(ipTreasuryAtaD);
+
+      // remaining_accounts now includes B→A at depth 2
+      const remainingAccounts = [
+        ...newCommitmentPdas.map((pda) => ({
+          pubkey: pda,
+          isSigner: false,
+          isWritable: true,
+        })),
+        // IP_D base accounts
+        { pubkey: ipConfigD, isSigner: false, isWritable: false },
+        { pubkey: ipTreasuryD, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryAtaD, isSigner: false, isWritable: true },
+        // Depth 0: D→C
+        { pubkey: splitDC, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryC, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryAtaC, isSigner: false, isWritable: true },
+        // Depth 1: C→B
+        { pubkey: splitCB, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryB, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryAtaB, isSigner: false, isWritable: true },
+        // Depth 2: B→A (now included since depth=3)
+        { pubkey: splitBA, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryA, isSigner: false, isWritable: true },
+        { pubkey: ipTreasuryAtaA, isSigner: false, isWritable: true },
+      ];
+
+      await kollect.methods
+        .settlePeriod(
+          new anchor.BN(newPeriodStart),
+          new anchor.BN(settledAt),
+          distributions,
+        )
+        .accountsPartial({
+          venueAuthority: authority.publicKey,
+          venue: venuePda,
+          settlement: settlementPda,
+          venueTokenAccount,
+          platformTreasuryTokenAccount,
+        })
+        .remainingAccounts(remainingAccounts)
+        .rpc();
+
+      // Read balances after
+      const ipAAfter = await balanceBefore(ipTreasuryAtaA);
+      const ipBAfter = await balanceBefore(ipTreasuryAtaB);
+      const ipCAfter = await balanceBefore(ipTreasuryAtaC);
+      const ipDAfter = await balanceBefore(ipTreasuryAtaD);
+
+      const ipADelta = ipAAfter - ipABefore;
+      const ipBDelta = ipBAfter - ipBBefore;
+      const ipCDelta = ipCAfter - ipCBefore;
+      const ipDDelta = ipDAfter - ipDBefore;
+
+      // Calculate expected: depth=3 walks D→C→B→A (all 3 levels)
+      const netToIpD = distributionAmount;
+
+      // Depth 0: D→C (15% of 140M)
+      const royaltyToC = Math.floor(
+        (netToIpD * DERIVATIVE_SHARE_BPS) / BPS_DENOMINATOR,
+      );
+      const afterC = netToIpD - royaltyToC;
+
+      // Depth 1: C→B (15% of remainder after C)
+      const royaltyToB = Math.floor(
+        (afterC * DERIVATIVE_SHARE_BPS) / BPS_DENOMINATOR,
+      );
+      const afterB = afterC - royaltyToB;
+
+      // Depth 2: B→A (15% of remainder after B)
+      const royaltyToA = Math.floor(
+        (afterB * DERIVATIVE_SHARE_BPS) / BPS_DENOMINATOR,
+      );
+      const finalToD = afterB - royaltyToA;
+
+      expect(ipADelta).to.equal(
+        royaltyToA,
+        "IP_A should receive depth-2 royalty",
+      );
+      expect(ipBDelta).to.equal(
+        royaltyToB,
+        "IP_B should receive depth-1 royalty",
+      );
+      expect(ipCDelta).to.equal(
+        royaltyToC,
+        "IP_C should receive depth-0 royalty",
+      );
+      expect(ipDDelta).to.equal(
+        finalToD,
+        "IP_D should receive remainder after all royalties",
+      );
+    });
+  });
 });

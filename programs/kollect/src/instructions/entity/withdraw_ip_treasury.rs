@@ -72,6 +72,12 @@ pub fn handler(ctx: Context<WithdrawIpTreasury>, amount: u64) -> Result<()> {
     let ip_treasury = &mut ctx.accounts.ip_treasury;
     let entity_treasury = &mut ctx.accounts.entity_treasury;
 
+    let available = ip_treasury
+        .total_earned
+        .checked_sub(ip_treasury.total_settled)
+        .ok_or(KollectError::ArithmeticOverflow)?;
+    require!(amount <= available, KollectError::InsufficientPayment);
+
     // Update counters
     ip_treasury.total_settled = ip_treasury
         .total_settled

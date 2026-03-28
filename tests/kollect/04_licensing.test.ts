@@ -695,5 +695,196 @@ describe("kollect licensing", () => {
         expect(err.toString()).to.include("MaxGrantsReached");
       }
     });
+
+    // ─── T9: Fee Split Verification ──────────────────────────────────────
+
+    it("splits payment between platform and IP treasury correctly", async () => {
+      const config = await kollect.account.platformConfig.fetch(
+        derivePlatformConfigPda(kollect.programId),
+      );
+      const platformFeeBps = config.platformFeeBps;
+
+      const tpl = await kollect.account.licenseTemplate.fetch(activeTplPda);
+      const price = tpl.price.toNumber();
+
+      const expectedPlatformFee = Math.floor((price * platformFeeBps) / 10_000);
+      const expectedNetToIp = price - expectedPlatformFee;
+
+      // Capture balances before
+      const platBefore = await provider.connection.getTokenAccountBalance(
+        platformAta,
+      );
+      const ipBefore = await provider.connection.getTokenAccountBalance(
+        ipTreasuryAta,
+      );
+
+      const feeSplitGrantee = await createTestEntity("fee_split_grantee");
+      const feeSplitGrantPda = deriveLicenseGrantPda(
+        activeLicensePda,
+        feeSplitGrantee.entityPda,
+        kollect.programId,
+      );
+
+      await kollect.methods
+        .purchaseLicense()
+        .accountsPartial({
+          granteeEntity: feeSplitGrantee.entityPda,
+          licenseTemplate: activeTplPda,
+          license: activeLicensePda,
+          licenseGrant: feeSplitGrantPda,
+          payerTokenAccount: payerAta,
+          platformTokenAccount: platformAta,
+          ipTreasuryTokenAccount: ipTreasuryAta,
+        })
+        .remainingAccounts([signerMeta(authority.publicKey)])
+        .rpc();
+
+      const platAfter = await provider.connection.getTokenAccountBalance(
+        platformAta,
+      );
+      const ipAfter = await provider.connection.getTokenAccountBalance(
+        ipTreasuryAta,
+      );
+
+      const platDelta =
+        Number(platAfter.value.amount) - Number(platBefore.value.amount);
+      const ipDelta =
+        Number(ipAfter.value.amount) - Number(ipBefore.value.amount);
+
+      expect(platDelta).to.equal(expectedPlatformFee, "Platform fee mismatch");
+      expect(ipDelta).to.equal(expectedNetToIp, "IP treasury net mismatch");
+    });
+
+    // ─── T10: Free License (price=0) ─────────────────────────────────────
+
+    it("purchases a free license with no token transfers", async () => {
+      const freeName = templateName("free_tpl");
+      const freeTplPda = deriveLicenseTemplatePda(
+        ipPda,
+        freeName,
+        kollect.programId,
+      );
+      const freeLicensePda = deriveLicensePda(freeTplPda, kollect.programId);
+
+      await kollect.methods
+        .createLicenseTemplate(
+          freeName,
+          new anchor.BN(0), // free
+          0, // unlimited
+          new anchor.BN(0), // perpetual
+        )
+        .accountsPartial({
+          entity: entityPda,
+          ipConfig: ipConfigPda,
+        })
+        .remainingAccounts([signerMeta(authority.publicKey)])
+        .rpc();
+
+      const freeGrantee = await createTestEntity("free_grantee");
+      const freeGrantPda = deriveLicenseGrantPda(
+        freeLicensePda,
+        freeGrantee.entityPda,
+        kollect.programId,
+      );
+
+      // Capture balances
+      const platBefore = await provider.connection.getTokenAccountBalance(
+        platformAta,
+      );
+      const ipBefore = await provider.connection.getTokenAccountBalance(
+        ipTreasuryAta,
+      );
+
+      await kollect.methods
+        .purchaseLicense()
+        .accountsPartial({
+          granteeEntity: freeGrantee.entityPda,
+          licenseTemplate: freeTplPda,
+          license: freeLicensePda,
+          licenseGrant: freeGrantPda,
+          payerTokenAccount: payerAta,
+          platformTokenAccount: platformAta,
+          ipTreasuryTokenAccount: ipTreasuryAta,
+        })
+        .remainingAccounts([signerMeta(authority.publicKey)])
+        .rpc();
+
+      // Verify grant created
+      const grant = await kollect.account.licenseGrant.fetch(freeGrantPda);
+      expect(grant.license.toString()).to.equal(freeLicensePda.toString());
+
+      // Verify template grants incremented
+      const tpl = await kollect.account.licenseTemplate.fetch(freeTplPda);
+      expect(tpl.currentGrants).to.equal(1);
+
+      // Verify no token movement
+      const platAfter = await provider.connection.getTokenAccountBalance(
+        platformAta,
+      );
+      const ipAfter = await provider.connection.getTokenAccountBalance(
+        ipTreasuryAta,
+      );
+      expect(Number(platAfter.value.amount)).to.equal(
+        Number(platBefore.value.amount),
+      );
+      expect(Number(ipAfter.value.amount)).to.equal(
+        Number(ipBefore.value.amount),
+      );
+    });
+
+    // ─── T11: Grant Duration / Expiration ────────────────────────────────
+
+    it("sets correct expiration with grant_duration", async () => {
+      const expName = templateName("expiring_tpl");
+      const expTplPda = deriveLicenseTemplatePda(
+        ipPda,
+        expName,
+        kollect.programId,
+      );
+      const expLicensePda = deriveLicensePda(expTplPda, kollect.programId);
+
+      const grantDuration = 3600; // 1 hour
+
+      await kollect.methods
+        .createLicenseTemplate(
+          expName,
+          new anchor.BN(0), // free
+          0, // unlimited
+          new anchor.BN(grantDuration),
+        )
+        .accountsPartial({
+          entity: entityPda,
+          ipConfig: ipConfigPda,
+        })
+        .remainingAccounts([signerMeta(authority.publicKey)])
+        .rpc();
+
+      const expGrantee = await createTestEntity("expiring_grantee");
+      const expGrantPda = deriveLicenseGrantPda(
+        expLicensePda,
+        expGrantee.entityPda,
+        kollect.programId,
+      );
+
+      await kollect.methods
+        .purchaseLicense()
+        .accountsPartial({
+          granteeEntity: expGrantee.entityPda,
+          licenseTemplate: expTplPda,
+          license: expLicensePda,
+          licenseGrant: expGrantPda,
+          payerTokenAccount: payerAta,
+          platformTokenAccount: platformAta,
+          ipTreasuryTokenAccount: ipTreasuryAta,
+        })
+        .remainingAccounts([signerMeta(authority.publicKey)])
+        .rpc();
+
+      const grant = await kollect.account.licenseGrant.fetch(expGrantPda);
+      expect(grant.grantedAt.toNumber()).to.be.greaterThan(0);
+      expect(grant.expiration.toNumber()).to.equal(
+        grant.grantedAt.toNumber() + grantDuration,
+      );
+    });
   });
 });
