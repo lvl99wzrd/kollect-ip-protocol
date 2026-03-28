@@ -51,21 +51,9 @@ pub enum IpCoreError {
     #[msg("CID cannot be empty")]
     EmptyCid,
 
-    /// Invalid license: not owned by license program.
-    #[msg("Invalid license: account not owned by license program")]
-    InvalidLicenseOwner,
-
-    /// Invalid license: does not reference the parent IP.
-    #[msg("Invalid license: does not reference the parent IP")]
-    InvalidLicenseOrigin,
-
-    /// License does not allow derivatives.
-    #[msg("License does not allow derivatives")]
-    DerivativesNotAllowed,
-
-    /// License has expired.
-    #[msg("License has expired")]
-    LicenseExpired,
+    /// License validation failed via CPI to the license program.
+    #[msg("License validation failed")]
+    LicenseValidationFailed,
 
     /// Invalid token mint for registration fee.
     #[msg("Invalid token mint: does not match registration currency")]
@@ -74,14 +62,6 @@ pub enum IpCoreError {
     /// Invalid treasury token account authority.
     #[msg("Invalid treasury token account authority")]
     InvalidTreasuryAuthority,
-
-    /// License grant does not reference the expected license.
-    #[msg("License grant does not reference the expected license")]
-    LicenseGrantMismatch,
-
-    /// Grantee does not match the child owner entity.
-    #[msg("Grantee does not match the child owner entity")]
-    InvalidGrantee,
 
     /// Token accounts are required when registration fee is non-zero.
     #[msg("Token accounts are required when registration fee is non-zero")]
