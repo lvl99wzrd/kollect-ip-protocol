@@ -15,6 +15,7 @@
 
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { Kollect } from "../../target/types/kollect";
 import {
   derivePlatformConfigPda,
@@ -114,6 +115,15 @@ async function main() {
         maxDerivativesDepth,
         maxLicenseTypes,
       )
+      .accountsPartial({
+        authority: authority.publicKey,
+        currencyMint: currency,
+        treasuryTokenAccount: getAssociatedTokenAddressSync(
+          currency,
+          treasuryPda,
+          true,
+        ),
+      })
       .rpc();
 
     console.log("\n✓ Platform config initialized successfully!");
