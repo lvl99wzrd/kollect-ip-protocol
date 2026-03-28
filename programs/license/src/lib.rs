@@ -96,4 +96,14 @@ pub mod license {
     ) -> Result<()> {
         instructions::revoke_license_grant::handler(ctx, ip_core_program_id)
     }
+
+    // ===== Validation Instructions =====
+
+    /// Validate that a license grant permits derivative creation.
+    ///
+    /// Read-only CPI endpoint called by ip_core's derivative instructions.
+    /// Does not mutate any state.
+    pub fn validate_derivative_grant(ctx: Context<ValidateDerivativeGrant>) -> Result<()> {
+        instructions::validate_derivative_grant::handler(ctx)
+    }
 }

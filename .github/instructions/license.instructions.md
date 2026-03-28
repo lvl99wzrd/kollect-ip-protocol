@@ -78,36 +78,49 @@ Define explicit errors:
 
 ## Design Principle
 
-- `ip_core`'s `create_derivative_link` requires license validation.
-- With the two-layer model, `ip_core` validates `LicenseGrant` instead of `License`.
+- `ip_core`'s `create_derivative_link` and `update_derivative_license` require license validation.
+- `ip_core` delegates all validation to this program via CPI — it never deserializes license accounts.
+- This program exposes a `validate_derivative_grant` instruction that `ip_core` invokes.
 
-## Validation Rules (Required by ip_core)
+## CPI Endpoint: `validate_derivative_grant`
 
-Before `DerivativeLink` creation, `ip_core` must validate:
+Called by `ip_core` before creating or updating a derivative link.
 
-1. `LicenseGrant` account owner must equal `LICENSE_PROGRAM_ID`.
-2. `LicenseGrant.license` must reference a valid License account.
-3. License must reference the `parent_ip` being derived from.
-4. `License.derivatives_allowed == true`.
-5. If `LicenseGrant.expiration != 0`, then:
-   ```
-   expiration > Clock::get()?.unix_timestamp
-   ```
-6. `LicenseGrant.grantee` must match the entity creating the derivative.
+### Accounts (all read-only, non-signer)
 
-Failure of any rule → instruction fails.
+| #   | Account        | Description                        |
+| --- | -------------- | ---------------------------------- |
+| 0   | license_grant  | The LicenseGrant PDA               |
+| 1   | license        | The License PDA                    |
+| 2   | parent_ip      | The parent IPAccount               |
+| 3   | grantee_entity | The Entity creating the derivative |
+
+### Instruction Data
+
+8-byte Anchor discriminator only (`sha256("global:validate_derivative_grant")[..8]`).
+
+### Validation Rules
+
+1. `license_grant` PDA validated via seeds `["license_grant", license, grantee_entity]`.
+2. `license` PDA validated via seeds `["license", parent_ip]`.
+3. `license.derivatives_allowed == true`.
+4. If `license_grant.expiration != 0`, then `expiration > Clock::get()?.unix_timestamp`.
+5. `license_grant.grantee == grantee_entity`.
+
+Failure of any rule → returns an error (which `ip_core` maps to `LicenseValidationFailed`).
 
 ---
 
 # INSTRUCTION → ACCOUNT MUTATION MAP
 
-| Instruction          | Accounts Mutated     |
-| -------------------- | -------------------- |
-| create_license       | License              |
-| update_license       | License              |
-| revoke_license       | License (close)      |
-| create_license_grant | LicenseGrant         |
-| revoke_license_grant | LicenseGrant (close) |
+| Instruction               | Accounts Mutated     |
+| ------------------------- | -------------------- |
+| create_license            | License              |
+| update_license            | License              |
+| revoke_license            | License (close)      |
+| create_license_grant      | LicenseGrant         |
+| revoke_license_grant      | LicenseGrant (close) |
+| validate_derivative_grant | None (read-only CPI) |
 
 Any instruction not listed is invalid.
 
@@ -317,7 +330,8 @@ programs/license/
     │   ├── update_license.rs
     │   ├── revoke_license.rs
     │   ├── create_license_grant.rs
-    │   └── revoke_license_grant.rs
+    │   ├── revoke_license_grant.rs
+    │   └── validate_derivative_grant.rs
     │
     └── utils/
         ├── mod.rs

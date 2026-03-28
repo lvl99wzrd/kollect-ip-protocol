@@ -109,18 +109,12 @@ pub mod ip_core {
     // ===== Derivative Instructions =====
 
     /// Create a derivative link between IPs.
-    pub fn create_derivative_link(
-        ctx: Context<CreateDerivativeLink>,
-        license_program_id: Pubkey,
-    ) -> Result<()> {
-        instructions::derivative::create_derivative_link::handler(ctx, license_program_id)
+    pub fn create_derivative_link(ctx: Context<CreateDerivativeLink>) -> Result<()> {
+        instructions::derivative::create_derivative_link::handler(ctx)
     }
 
     /// Update the license on a derivative link.
-    pub fn update_derivative_license(
-        ctx: Context<UpdateDerivativeLicense>,
-        license_program_id: Pubkey,
-    ) -> Result<()> {
-        instructions::derivative::update_derivative_license::handler(ctx, license_program_id)
+    pub fn update_derivative_license(ctx: Context<UpdateDerivativeLicense>) -> Result<()> {
+        instructions::derivative::update_derivative_license::handler(ctx)
     }
 }
