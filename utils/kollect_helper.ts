@@ -4,6 +4,8 @@ import { PublicKey } from "@solana/web3.js";
 const PLATFORM_CONFIG_SEED = "platform_config";
 const PLATFORM_TREASURY_SEED = "platform_treasury";
 const ENTITY_TREASURY_SEED = "entity_treasury";
+const TEMPLATE_CONFIG_SEED = "template_config";
+const LICENSE_TEMPLATE_SEED = "license_template";
 
 export const derivePlatformConfigPda = (
   programId: PublicKey,
@@ -23,12 +25,37 @@ export const derivePlatformTreasuryPda = (
   );
 };
 
+export const deriveTemplateConfigPda = (
+  programId: PublicKey,
+): [PublicKey, number] => {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(TEMPLATE_CONFIG_SEED)],
+    programId,
+  );
+};
+
 export const deriveEntityTreasuryPda = (
   programId: PublicKey,
   entity: PublicKey,
 ): [PublicKey, number] => {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(ENTITY_TREASURY_SEED), entity.toBuffer()],
+    programId,
+  );
+};
+
+const u64LeBuffer = (n: number): Buffer => {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(BigInt(n));
+  return buf;
+};
+
+export const deriveLicenseTemplatePda = (
+  templateId: number,
+  programId: PublicKey,
+): [PublicKey, number] => {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from(LICENSE_TEMPLATE_SEED), u64LeBuffer(templateId)],
     programId,
   );
 };

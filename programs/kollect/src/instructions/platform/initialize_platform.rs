@@ -5,8 +5,8 @@ use anchor_spl::token::{Mint, Token, TokenAccount};
 use crate::constants::MAX_ROYALTY_CHAIN_DEPTH;
 use crate::error::KollectError;
 use crate::events::PlatformInitialized;
-use crate::state::{PlatformConfig, PlatformTreasury};
-use crate::utils::seeds::{PLATFORM_CONFIG_SEED, PLATFORM_TREASURY_SEED};
+use crate::state::{PlatformConfig, PlatformTreasury, TemplateConfig};
+use crate::utils::seeds::{PLATFORM_CONFIG_SEED, PLATFORM_TREASURY_SEED, TEMPLATE_CONFIG_SEED};
 
 #[derive(Accounts)]
 #[instruction(base_price_per_play: u64, platform_fee_bps: u16, currency: Pubkey)]
@@ -31,6 +31,15 @@ pub struct InitializePlatform<'info> {
         bump,
     )]
     pub treasury: Account<'info, PlatformTreasury>,
+
+    #[account(
+        init,
+        payer = authority,
+        space = TemplateConfig::SIZE,
+        seeds = [TEMPLATE_CONFIG_SEED],
+        bump,
+    )]
+    pub template_config: Account<'info, TemplateConfig>,
 
     /// SPL token mint used as the platform currency.
     /// Must match the `currency` parameter passed to this instruction.
@@ -79,6 +88,10 @@ pub fn handler(
     treasury.authority = ctx.accounts.authority.key();
     treasury.config = config.key();
     treasury.bump = ctx.bumps.treasury;
+
+    let template_config = &mut ctx.accounts.template_config;
+    template_config.template_count = 0;
+    template_config.bump = ctx.bumps.template_config;
 
     emit!(PlatformInitialized {
         config: config.key(),

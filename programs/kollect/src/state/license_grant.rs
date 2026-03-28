@@ -1,19 +1,19 @@
 use anchor_lang::prelude::*;
 
-/// Thin interface account matching ip_core's `LicenseGrantData` exactly.
-/// Created during `purchase_license`. ip_core uses `try_from_slice`
-/// which rejects trailing bytes — this account must have exactly
-/// these fields after the 8-byte Anchor discriminator.
+/// Per-entity proof of license purchase. Passed as `license_grant`
+/// (account[0]) in ip_core's `validate_derivative_grant` CPI.
 #[account]
 pub struct LicenseGrant {
     pub license: Pubkey,
     pub grantee: Pubkey,
     pub granted_at: i64,
     pub expiration: i64,
+    pub price_paid: u64,
     pub bump: u8,
 }
 
 impl LicenseGrant {
-    /// 8 (discriminator) + 32 + 32 + 8 + 8 + 1 = 89 bytes
-    pub const SIZE: usize = 8 + 32 + 32 + 8 + 8 + 1;
+    // 8 disc + 32 license + 32 grantee + 8 granted_at + 8 expiration
+    // + 8 price_paid + 1 bump
+    pub const SIZE: usize = 8 + 32 + 32 + 8 + 8 + 8 + 1;
 }

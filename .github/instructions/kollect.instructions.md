@@ -25,7 +25,9 @@ All `kollect` state lives in PDAs derived from the `kollect` program ID.
 
 **License program validation in ip_core**: `ip_core`'s `create_derivative_link` and `update_derivative_license` accept `license_program_id` as a **caller-supplied instruction argument** — the `LICENSE_PROGRAM_ID` constant in `ip_core` is dead code. The caller passes `kollect`'s program ID, and `ip_core` validates the license account's owner matches. This means **no changes to `ip_core` are needed** for `kollect` to function as the license program.
 
-**Thin interface accounts**: `ip_core` deserializes license accounts using Borsh `try_from_slice`, which **rejects trailing bytes**. This means `kollect` accounts with extra fields beyond what `ip_core` expects will fail deserialization. Therefore, `kollect` uses dedicated thin `License` and `LicenseGrant` accounts containing **exactly** the fields `ip_core` expects — no more, no less. The richer `LicenseTemplate` (business logic, pricing, grants) is a separate `kollect`-internal account.
+**PIL-based licensing**: `LicenseTemplate` accounts are global, reusable term sheets (Programmable IP License) that anyone can create. Templates are identified by auto-incrementing IDs managed by a `TemplateConfig` singleton counter. `License` accounts attach a template to a specific IP with business terms (price, grants, duration, derivative rev share). `LicenseGrant` accounts are per-entity proofs of purchase.
+
+**CPI validation**: `ip_core`'s `create_derivative_link` invokes `kollect::validate_derivative_grant` via CPI, passing `[license_grant, license, parent_ip, grantee_entity]` as remaining accounts. `ip_core` delegates validation entirely to the license program — no thin interface or `try_from_slice` deserialization is needed.
 
 ---
 
@@ -204,101 +206,95 @@ pub struct IpDistribution {
 
 The on-chain logic validates that `sum(distributions.amount) == total_amount - platform_fee` and that all referenced IPs are onboarded. Per-IP revenue is recorded for clear reporting.
 
-### 3.9 LicenseTemplate
+### 3.9 TemplateConfig (Singleton)
 
-Programmable license terms created by an IP owner for an onboarded IP. This is the `kollect`-internal configuration account with rich business logic fields.
+Auto-incrementing counter for global license template IDs. Initialized alongside `PlatformConfig` during `initialize_platform`.
 
-**PDA Seeds:** `["license_template", ip_account.key(), template_name]`
+**PDA Seeds:** `["template_config"]`
 
-`template_name` is a `[u8; 32]` unique label per IP (e.g. `b"remix-standard"` padded).
+| Field          | Type | Mutability | Description                            |
+| -------------- | ---- | ---------- | -------------------------------------- |
+| template_count | u64  | mutable    | Next template ID (monotonic increment) |
+| bump           | u8   | immutable  | PDA bump                               |
 
-| Field          | Type     | Mutability | Description                                  |
-| -------------- | -------- | ---------- | -------------------------------------------- |
-| ip_account     | Pubkey   | immutable  | Origin IP (ip_core IpAccount)                |
-| ip_config      | Pubkey   | immutable  | Must be onboarded on kollect                 |
-| creator_entity | Pubkey   | immutable  | Entity that created this template (IP owner) |
-| template_name  | [u8; 32] | immutable  | Unique name for this template                |
-| price          | u64      | mutable    | Price to purchase a grant (0 = free)         |
-| max_grants     | u16      | immutable  | Max grants issuable (0 = unlimited)          |
-| current_grants | u16      | mutable    | Number of grants currently issued            |
-| grant_duration | i64      | mutable    | Duration in seconds (0 = perpetual)          |
-| is_active      | bool     | mutable    | Whether new grants can be purchased          |
-| created_at     | i64      | immutable  | Unix timestamp                               |
-| updated_at     | i64      | mutable    | Unix timestamp                               |
-| bump           | u8       | immutable  | PDA bump                                     |
+Size: 8 (discriminator) + 8 + 1 = **17 bytes**.
+
+### 3.10 LicenseTemplate (Global PIL)
+
+Global, reusable license terms (Programmable IP License). Anyone can create a template — no IP or entity ownership required. Terms are immutable after creation; only `is_active` may be toggled to retire the template.
+
+**PDA Seeds:** `["license_template", &template_id.to_le_bytes()]`
+
+`template_id` is a `u64` assigned by `TemplateConfig.template_count` at creation time.
+
+| Field                    | Type     | Mutability | Description                                           |
+| ------------------------ | -------- | ---------- | ----------------------------------------------------- |
+| template_id              | u64      | immutable  | Auto-assigned sequential ID                           |
+| creator                  | Pubkey   | immutable  | Wallet that created the template (signer)             |
+| template_name            | [u8; 64] | immutable  | Human-readable label (right-padded)                   |
+| transferable             | bool     | immutable  | Whether license grants are transferable               |
+| derivatives_allowed      | bool     | immutable  | Whether derivatives can be created                    |
+| derivatives_reciprocal   | bool     | immutable  | Derivatives must use the same template                |
+| derivatives_approval     | bool     | immutable  | Derivatives require IP owner approval                 |
+| commercial_use           | bool     | immutable  | Commercial use of licensed IP allowed                 |
+| commercial_attribution   | bool     | immutable  | Attribution required for commercial use               |
+| commercial_rev_share_bps | u16      | immutable  | Min commercial revenue share (bps, floor for License) |
+| derivative_rev_share_bps | u16      | immutable  | Min derivative revenue share (bps, floor for License) |
+| uri                      | [u8; 96] | immutable  | Off-chain metadata URI (IPFS CID, right-padded)       |
+| is_active                | bool     | mutable    | Creator can deactivate to prevent new Licenses        |
+| created_at               | i64      | immutable  | Unix timestamp                                        |
+| bump                     | u8       | immutable  | PDA bump                                              |
+
+Size: 8 + 8 + 32 + 64 + 6×1 + 2 + 2 + 96 + 1 + 8 + 1 = **228 bytes**.
+
+The `commercial_rev_share_bps` and `derivative_rev_share_bps` on the template are **minimum floors**: the per-IP `License` must set values ≥ these when attaching the template.
+
+### 3.11 License (Per-IP Attachment)
+
+Business terms attaching a `LicenseTemplate` to a specific IP. Created by the IP's entity controller. This is the account `ip_core` receives during derivative validation.
+
+**PDA Seeds:** `["license", ip_account.key(), license_template.key()]`
+
+| Field                    | Type   | Mutability | Description                                    |
+| ------------------------ | ------ | ---------- | ---------------------------------------------- |
+| ip_account               | Pubkey | immutable  | The IP this license covers (ip_core IpAccount) |
+| ip_config                | Pubkey | immutable  | Must be onboarded on kollect                   |
+| license_template         | Pubkey | immutable  | Reference to the global LicenseTemplate        |
+| owner_entity             | Pubkey | immutable  | Entity that created this license (IP owner)    |
+| price                    | u64    | mutable    | Price to purchase a grant (0 = free)           |
+| max_grants               | u16    | immutable  | Max grants issuable (0 = unlimited)            |
+| current_grants           | u16    | mutable    | Number of grants currently issued              |
+| grant_duration           | i64    | mutable    | Duration in seconds (0 = perpetual)            |
+| derivative_rev_share_bps | u16    | mutable    | Derivative revenue share (≥ template min)      |
+| is_active                | bool   | mutable    | Whether new grants can be purchased            |
+| created_at               | i64    | immutable  | Unix timestamp                                 |
+| updated_at               | i64    | mutable    | Unix timestamp                                 |
+| bump                     | u8     | immutable  | PDA bump                                       |
+
+Size: 8 + 32 + 32 + 32 + 32 + 8 + 2 + 2 + 8 + 2 + 1 + 8 + 8 + 1 = **176 bytes**.
 
 `current_grants` is a bounded counter (capped by `max_grants`). It is NOT used for PDA derivation.
 
-All license purchase payments use `PlatformConfig.currency` — the template does not carry its own currency.
+All license purchase payments use `PlatformConfig.currency` — the license does not carry its own currency.
 
-### 3.10 License (Thin Interface Account)
+### 3.12 LicenseGrant
 
-Thin account created alongside a `LicenseTemplate`. Exists **solely** to satisfy `ip_core`'s `LicenseData` deserialization via `try_from_slice`.
-
-`ip_core` uses `try_from_slice` which **rejects trailing bytes** — the account must contain exactly the fields `ip_core` expects, nothing more.
-
-**PDA Seeds:** `["license", license_template.key()]`
-
-1:1 relationship with `LicenseTemplate`. Created during `create_license_template`, never updated.
-
-**Field layout matches `ip_core`'s `LicenseData` exactly (after 8-byte Anchor discriminator):**
-
-| Field               | Type   | Mutability | Description                      |
-| ------------------- | ------ | ---------- | -------------------------------- |
-| origin_ip           | Pubkey | immutable  | = LicenseTemplate.ip_account     |
-| authority           | Pubkey | immutable  | = LicenseTemplate.creator_entity |
-| derivatives_allowed | bool   | immutable  | Always `true`                    |
-| created_at          | i64    | immutable  | = LicenseTemplate.created_at     |
-| bump                | u8     | immutable  | PDA bump                         |
-
-Size: 8 (discriminator) + 32 + 32 + 1 + 8 + 1 = **82 bytes**.
-
-Passed as the `license` account in `ip_core::create_derivative_link`.
-
-### 3.11 LicenseGrant (Thin Interface Account)
-
-Thin account created during `purchase_license`. Exists **solely** to satisfy `ip_core`'s `LicenseGrantData` deserialization via `try_from_slice`.
+Per-entity proof of license purchase. Created during `purchase_license`.
 
 **PDA Seeds:** `["license_grant", license.key(), grantee_entity.key()]`
 
-Note: seeds reference the `License` PDA (not LicenseTemplate), because `ip_core` validates `LicenseGrant.license == license_info.key()`.
+One grant per license per entity.
 
-One grant per license per entity. To obtain multiple license types from the same IP, the IP owner creates multiple `LicenseTemplate`s (each with its own `License`).
+| Field      | Type   | Mutability | Description                                             |
+| ---------- | ------ | ---------- | ------------------------------------------------------- |
+| license    | Pubkey | immutable  | License PDA key                                         |
+| grantee    | Pubkey | immutable  | Grantee Entity key                                      |
+| granted_at | i64    | immutable  | Unix timestamp                                          |
+| expiration | i64    | immutable  | 0 = no expiration, computed from license.grant_duration |
+| price_paid | u64    | immutable  | Gross price paid at time of purchase                    |
+| bump       | u8     | immutable  | PDA bump                                                |
 
-**Field layout matches `ip_core`'s `LicenseGrantData` exactly (after 8-byte Anchor discriminator):**
-
-| Field      | Type   | Mutability | Description                                              |
-| ---------- | ------ | ---------- | -------------------------------------------------------- |
-| license    | Pubkey | immutable  | = License PDA key                                        |
-| grantee    | Pubkey | immutable  | = grantee Entity key                                     |
-| granted_at | i64    | immutable  | Unix timestamp                                           |
-| expiration | i64    | immutable  | 0 = no expiration, computed from template.grant_duration |
-| bump       | u8     | immutable  | PDA bump                                                 |
-
-Size: 8 (discriminator) + 32 + 32 + 8 + 8 + 1 = **89 bytes**.
-
-Passed as the `license_grant` account in `ip_core::create_derivative_link`.
-
-Additional purchase metadata (`price_paid`, `platform_fee`) is emitted via `LicensePurchased` event — not stored on-chain since it's historical and derivable from the template's price at time of purchase.
-
-### 3.12 RoyaltyPolicy
-
-Per-LicenseTemplate royalty configuration. Defines how derivatives share revenue back to the origin IP.
-
-**PDA Seeds:** `["royalty_policy", license_template.key()]`
-
-| Field                | Type   | Mutability | Description                                  |
-| -------------------- | ------ | ---------- | -------------------------------------------- |
-| license_template     | Pubkey | immutable  | Parent LicenseTemplate                       |
-| derivative_share_bps | u16    | mutable    | % of derivative revenue owed to origin (bps) |
-| allow_remix          | bool   | mutable    | Derivative type: remix allowed               |
-| allow_cover          | bool   | mutable    | Derivative type: cover allowed               |
-| allow_sample         | bool   | mutable    | Derivative type: sample allowed              |
-| attribution_required | bool   | mutable    | Whether derivative must credit origin        |
-| commercial_use       | bool   | mutable    | Whether derivative can be used commercially  |
-| created_at           | i64    | immutable  | Unix timestamp                               |
-| updated_at           | i64    | mutable    | Unix timestamp                               |
-| bump                 | u8     | immutable  | PDA bump                                     |
+Size: 8 + 32 + 32 + 8 + 8 + 8 + 1 = **97 bytes**.
 
 ### 3.13 RoyaltySplit
 
@@ -308,18 +304,18 @@ Royalties flow **bottom-to-top**: when a derivative earns revenue, a share goes 
 
 **PDA Seeds:** `["royalty_split", derivative_ip.key(), origin_ip.key()]`
 
-| Field             | Type   | Mutability | Description                                     |
-| ----------------- | ------ | ---------- | ----------------------------------------------- |
-| derivative_ip     | Pubkey | immutable  | The derivative IpAccount (ip_core)              |
-| origin_ip         | Pubkey | immutable  | The parent/origin IpAccount (ip_core)           |
-| license_grant     | Pubkey | immutable  | LicenseGrant under which derivative was created |
-| royalty_policy    | Pubkey | immutable  | RoyaltyPolicy governing the split               |
-| share_bps         | u16    | immutable  | Snapshot of derivative_share_bps at creation    |
-| total_distributed | u64    | mutable    | Cumulative amount distributed to origin         |
-| created_at        | i64    | immutable  | Unix timestamp                                  |
-| bump              | u8     | immutable  | PDA bump                                        |
+| Field             | Type   | Mutability | Description                                      |
+| ----------------- | ------ | ---------- | ------------------------------------------------ |
+| derivative_ip     | Pubkey | immutable  | The derivative IpAccount (ip_core)               |
+| origin_ip         | Pubkey | immutable  | The parent/origin IpAccount (ip_core)            |
+| license_grant     | Pubkey | immutable  | LicenseGrant under which derivative was created  |
+| license           | Pubkey | immutable  | License governing the derivative terms           |
+| share_bps         | u16    | immutable  | Snapshot of derivative_rev_share_bps at creation |
+| total_distributed | u64    | mutable    | Cumulative amount distributed to origin          |
+| created_at        | i64    | immutable  | Unix timestamp                                   |
+| bump              | u8     | immutable  | PDA bump                                         |
 
-**Auto-created during `onboard_ip`**: When onboarding an IP that has a `DerivativeLink` in `ip_core`, the `onboard_ip` instruction automatically creates the `RoyaltySplit`. The instruction requires the `DerivativeLink`, `LicenseGrant`, and `RoyaltyPolicy` accounts as additional inputs. If the IP is not a derivative (no `DerivativeLink` exists), no `RoyaltySplit` is created.
+**Auto-created during `onboard_ip`**: When onboarding an IP that has a `DerivativeLink` in `ip_core`, the `onboard_ip` instruction automatically creates the `RoyaltySplit`. The instruction requires the `DerivativeLink`, `LicenseGrant`, `License`, and `RoyaltySplit` accounts as remaining accounts (4 accounts). If the IP is not a derivative (no `DerivativeLink` exists), no `RoyaltySplit` is created.
 
 During settlement, the system walks the RoyaltySplit chain for each IP:
 
@@ -369,13 +365,14 @@ During settlement, the system walks the RoyaltySplit chain for each IP:
 
 ### Licensing
 
-| Instruction             | Accounts Mutated                                            | Authority                                        |
-| ----------------------- | ----------------------------------------------------------- | ------------------------------------------------ |
-| create_license_template | LicenseTemplate, License                                    | Entity controller(s) — cross-program read Entity |
-| update_license_template | LicenseTemplate                                             | Entity controller(s) — cross-program read Entity |
-| create_royalty_policy   | RoyaltyPolicy                                               | Entity controller(s) — cross-program read Entity |
-| update_royalty_policy   | RoyaltyPolicy                                               | Entity controller(s) — cross-program read Entity |
-| purchase_license        | LicenseGrant, LicenseTemplate, IpTreasury, PlatformTreasury | Grantee Entity controller(s)                     |
+| Instruction               | Accounts Mutated                                    | Authority                                        |
+| ------------------------- | --------------------------------------------------- | ------------------------------------------------ |
+| create_license_template   | LicenseTemplate, TemplateConfig                     | Any signer (global, no entity required)          |
+| update_license_template   | LicenseTemplate                                     | Template creator wallet                          |
+| create_license            | License, IpConfig                                   | Entity controller(s) — cross-program read Entity |
+| update_license            | License                                             | Entity controller(s) — cross-program read Entity |
+| purchase_license          | LicenseGrant, License, IpTreasury, PlatformTreasury | Grantee Entity controller(s)                     |
+| validate_derivative_grant | — (read-only CPI handler)                           | ip_core via CPI                                  |
 
 ### Playback & Settlement
 
@@ -422,7 +419,7 @@ The royalty chain walks upward (max `MAX_ROYALTY_CHAIN_DEPTH` = 3 levels): if or
 License purchase fee:
 
 ```
-gross_license = license_template.price
+gross_license = license.price
 platform_cut = gross_license * platform.platform_fee_bps / 10_000
 net_to_ip_owner = gross_license - platform_cut
 ```
@@ -477,39 +474,41 @@ Suggested defaults (not enforced on-chain):
 
 ### Creating a License
 
-1. Platform authority onboards an IP via `onboard_ip` (after off-chain review)
-2. Entity creates a `LicenseTemplate` with terms (price, duration, max grants)
-3. Entity creates a `RoyaltyPolicy` attached to the template (revenue share %, allowed derivative types)
+1. Any wallet creates a `LicenseTemplate` with PIL terms (derivatives, commercial use, rev share floors, etc.) — no IP or entity required
+2. Platform authority onboards an IP via `onboard_ip` (after off-chain review)
+3. Entity controller creates a `License` attaching a `LicenseTemplate` to their IP, setting price, grants, duration, and `derivative_rev_share_bps` (≥ template’s floor)
 
 ### Purchasing a License
 
-1. Another Entity calls `purchase_license` referencing a `LicenseTemplate`
+1. Another Entity calls `purchase_license` referencing a `License`
 2. Payment (if price > 0):
    - Platform takes `platform_fee_bps` cut → transfers to `PlatformTreasury` token account
    - Remainder transfers to origin IP's `IpTreasury` token account (updates `IpTreasury.total_earned`)
-3. A thin `LicenseGrant` is created (matching `ip_core`'s `LicenseGrantData` exactly)
-   - `LicenseGrant.license` = `License` PDA (the thin account, not the template)
-   - `LicenseGrant.expiration` = if template.grant_duration > 0: `now + grant_duration`, else `0`
-4. `LicenseTemplate.current_grants` increments (bounded by `max_grants`)
-5. `LicensePurchased` event emits `price_paid` and `platform_fee` (not stored on grant account)
+3. A `LicenseGrant` is created:
+   - `LicenseGrant.license` = `License` PDA key
+   - `LicenseGrant.expiration` = if license.grant_duration > 0: `now + grant_duration`, else `0`
+   - `LicenseGrant.price_paid` = gross price at time of purchase
+4. `License.current_grants` increments (bounded by `max_grants`)
+5. `LicensePurchased` event emits `price_paid` and `platform_fee`
 
 ### Creating a Derivative
 
-1. Grantee uses `ip_core::create_derivative_link` passing **two accounts**:
-   - `license` = the `License` PDA (thin account, owned by `kollect`)
-   - `license_grant` = the `LicenseGrant` PDA (thin account, owned by `kollect`)
-   - Caller passes `kollect`'s program ID as the `license_program_id` argument
-2. `ip_core` validates (all pass because the thin accounts match exactly):
-   - Both accounts owned by `kollect::ID`
-   - `LicenseGrant.license == license.key()`
-   - `License.origin_ip == parent_ip.key()`
-   - `License.derivatives_allowed == true`
-   - `LicenseGrant.expiration` is 0 or in the future
-   - `LicenseGrant.grantee == child_owner_entity.key()`
-3. Grantee onboards the derivative IP on kollect via `onboard_ip` (platform authority initiates after review)
+1. Grantee uses `ip_core::create_derivative_link` passing:
+   - `license_program_id` = `kollect`'s program ID (instruction argument)
+   - `license_grant` and `license` as accounts
+2. `ip_core` invokes `kollect::validate_derivative_grant` via CPI with `[license_grant, license, parent_ip, grantee_entity]`
+3. `kollect` validates: grant not expired, license active, derivatives allowed on the template, grantee matches
+4. Grantee onboards the derivative IP on kollect via `onboard_ip` (platform authority initiates after review)
    - If `DerivativeLink` exists in `ip_core` for this IP, `onboard_ip` **automatically creates a `RoyaltySplit`**
-   - Requires `DerivativeLink`, `LicenseGrant`, `License`, and `RoyaltyPolicy` as additional inputs
-   - `share_bps` is snapshotted from the `RoyaltyPolicy` at onboarding time
+   - Requires `DerivativeLink`, `LicenseGrant`, `License`, and `RoyaltySplit` as remaining accounts (4 accounts)
+   - `share_bps` is snapshotted from the `License.derivative_rev_share_bps` at onboarding time
+   - Caller passes `kollect`'s program ID as the `license_program_id` argument
+5. `ip_core` invokes `kollect::validate_derivative_grant` via CPI:
+   - `kollect` validates: grant not expired, license active, derivatives allowed on template, grantee matches entity
+6. Grantee onboards the derivative IP on kollect via `onboard_ip` (platform authority initiates after review)
+   - If `DerivativeLink` exists in `ip_core` for this IP, `onboard_ip` **automatically creates a `RoyaltySplit`**
+   - Requires `DerivativeLink`, `LicenseGrant`, `License`, and `RoyaltySplit` as remaining accounts (4 accounts)
+   - `share_bps` is snapshotted from the `License.derivative_rev_share_bps` at onboarding time
 
 ### Royalty Distribution (Bottom-to-Top)
 
@@ -526,8 +525,9 @@ During settlement, for each IP in the `IpDistribution` list:
 
 ## 9. Design Constraints
 
-- All accounts MUST be PDA-derived. No randomness, no auto-increment IDs.
-- `current_grants` on LicenseTemplate is a bounded counter (not used for PDA derivation).
+- All accounts MUST be PDA-derived. No randomness, no nonce-based IDs.
+- `LicenseTemplate` uses auto-incrementing IDs via `TemplateConfig` singleton counter.
+- `current_grants` on License is a bounded counter (not used for PDA derivation).
 - All PDAs derived from `kollect` program ID (never `ip_core`'s).
 - Fixed-size fields preferred. No unbounded `Vec` growth.
 - `IpDistribution` in `settle_period` is instruction data (bounded by transaction size limits).
@@ -544,7 +544,7 @@ During settlement, for each IP in the `IpDistribution` list:
 - Associated Token Accounts (ATAs) for the platform currency are created at init time: `initialize_platform`, `initialize_entity_treasury`, `onboard_ip`.
 - `onboard_ip` and `deactivate_ip` are admin-gated (platform authority only). `update_ip_config` remains entity-controller-gated.
 - `RoyaltySplit` is auto-created during `onboard_ip` when a `DerivativeLink` exists — no separate instruction.
-- `License` and `LicenseGrant` are thin interface accounts matching `ip_core`'s deserialization exactly (`try_from_slice` rejects trailing bytes).
+- `License` and `LicenseGrant` accounts are validated by `kollect::validate_derivative_grant` via CPI from `ip_core` — no thin interface or `try_from_slice` deserialization.
 - No governance mechanisms in the program itself.
 
 ---
@@ -578,11 +578,11 @@ Define errors specific to `kollect`:
 - EntityTreasuryNotInitialized
 - InsufficientSignatures
 - LicenseTemplateNotActive
+- LicenseNotActive
 - MaxGrantsReached
-- LicenseAlreadyGranted (duplicate grant for same template + entity)
+- LicenseAlreadyGranted (duplicate grant for same license + entity)
 - LicenseExpired
-- InvalidLicenseTemplate (IP not onboarded or wrong owner)
-- RoyaltyPolicyAlreadyExists
+- InvalidLicenseTemplate (template not active or wrong reference)
 - RoyaltySplitAlreadyExists
 - InvalidDerivativeLink (no DerivativeLink in ip_core)
 - RoyaltyChainTooDeep (exceeds MAX_ROYALTY_CHAIN_DEPTH = 3)
@@ -593,7 +593,8 @@ Define errors specific to `kollect`:
 - InvalidRoyaltySplitPda (royalty split PDA mismatch)
 - MaxLicenseTypesReached (IP has reached max_license_types from config)
 - InvalidGrantDuration (grant duration value invalid)
-- InvalidShareBps (share basis points exceeds 10000)
+- InvalidShareBps (share basis points exceeds 10000 or below template minimum)
+- BpsBelowTemplateMinimum (License derivative_rev_share_bps < template floor)
 - IpAlreadyActive (reactivating an already active IP)
 - VenueAlreadyActive (reactivating an already active venue)
 - InsufficientVenueBalance (venue token account has insufficient funds for settlement)
@@ -634,11 +635,11 @@ Emit events for all state changes:
 
 ### Licensing
 
-- **LicenseTemplateCreated**: template, license, ip_account, creator_entity, template_name, price, max_grants
-- **LicenseTemplateUpdated**: template, price, max_grants, grant_duration, is_active, updated_at
-- **RoyaltyPolicyCreated**: policy, template, derivative_share_bps, allow_remix, allow_cover, allow_sample
-- **RoyaltyPolicyUpdated**: policy, derivative_share_bps, allow_remix, allow_cover, allow_sample, attribution_required, commercial_use, updated_at
-- **LicensePurchased**: grant, template, grantee_entity, origin_ip, price_paid, platform_fee, net_to_owner, expiration
+- **LicenseTemplateCreated**: template, creator, template_name, template_id, derivatives_allowed, commercial_use, derivative_rev_share_bps, commercial_rev_share_bps, uri
+- **LicenseTemplateUpdated**: template, is_active, updated_at
+- **LicenseCreated**: license, ip_account, license_template, owner_entity, price, max_grants, grant_duration, derivative_rev_share_bps
+- **LicenseUpdated**: license, price, grant_duration, is_active, derivative_rev_share_bps, updated_at
+- **LicensePurchased**: grant, license, grantee_entity, origin_ip, price_paid, platform_fee, net_to_owner, expiration
 - **RoyaltySplitCreated**: split, derivative_ip, origin_ip, share_bps (emitted during onboard_ip when derivative)
 
 ### Playback & Settlement
@@ -664,6 +665,7 @@ programs/kollect/
     │   ├── mod.rs
     │   ├── platform_config.rs
     │   ├── platform_treasury.rs
+    │   ├── template_config.rs
     │   ├── ip_config.rs
     │   ├── ip_treasury.rs
     │   ├── entity_treasury.rs
@@ -673,7 +675,6 @@ programs/kollect/
     │   ├── license_template.rs
     │   ├── license.rs
     │   ├── license_grant.rs
-    │   ├── royalty_policy.rs
     │   └── royalty_split.rs
     ├── instructions/
     │   ├── mod.rs
@@ -702,9 +703,10 @@ programs/kollect/
     │   │   ├── mod.rs
     │   │   ├── create_license_template.rs
     │   │   ├── update_license_template.rs
-    │   │   ├── create_royalty_policy.rs
-    │   │   ├── update_royalty_policy.rs
-    │   │   └── purchase_license.rs
+    │   │   ├── create_license.rs
+    │   │   ├── update_license.rs
+    │   │   ├── purchase_license.rs
+    │   │   └── validate_derivative_grant.rs
     │   └── playback/
     │       ├── mod.rs
     │       ├── submit_playback.rs

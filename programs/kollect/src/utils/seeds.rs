@@ -1,5 +1,6 @@
 pub const PLATFORM_CONFIG_SEED: &[u8] = b"platform_config";
 pub const PLATFORM_TREASURY_SEED: &[u8] = b"platform_treasury";
+pub const TEMPLATE_CONFIG_SEED: &[u8] = b"template_config";
 pub const IP_CONFIG_SEED: &[u8] = b"ip_config";
 pub const IP_TREASURY_SEED: &[u8] = b"ip_treasury";
 pub const ENTITY_TREASURY_SEED: &[u8] = b"entity_treasury";
@@ -9,5 +10,4 @@ pub const SETTLEMENT_SEED: &[u8] = b"settlement";
 pub const LICENSE_TEMPLATE_SEED: &[u8] = b"license_template";
 pub const LICENSE_SEED: &[u8] = b"license";
 pub const LICENSE_GRANT_SEED: &[u8] = b"license_grant";
-pub const ROYALTY_POLICY_SEED: &[u8] = b"royalty_policy";
 pub const ROYALTY_SPLIT_SEED: &[u8] = b"royalty_split";

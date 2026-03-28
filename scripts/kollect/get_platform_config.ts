@@ -11,6 +11,7 @@ import { Kollect } from "../../target/types/kollect";
 import {
   derivePlatformConfigPda,
   derivePlatformTreasuryPda,
+  deriveTemplateConfigPda,
   getCluster,
   explorerUrl,
 } from "../../utils/kollect_helper";
@@ -29,6 +30,7 @@ async function main() {
   // Derive PDAs
   const [configPda] = derivePlatformConfigPda(program.programId);
   const [treasuryPda] = derivePlatformTreasuryPda(program.programId);
+  const [templateConfigPda] = deriveTemplateConfigPda(program.programId);
 
   console.log(`Config PDA: ${configPda.toBase58()}`);
   console.log(`Treasury PDA: ${treasuryPda.toBase58()}`);
@@ -64,6 +66,21 @@ async function main() {
     console.log(`\n  Explorer: ${explorerUrl(treasuryPda, cluster)}`);
   } catch {
     console.log("Platform treasury is NOT initialized.");
+  }
+
+  // Check template config status
+  console.log("\n=== Template Config Status ===");
+  try {
+    const templateConfig = await program.account.templateConfig.fetch(
+      templateConfigPda,
+    );
+    console.log("Template config initialized:");
+    console.log(`  Template Count: ${templateConfig.templateCount.toString()}`);
+    console.log(`  Bump: ${templateConfig.bump}`);
+
+    console.log(`\n  Explorer: ${explorerUrl(templateConfigPda, cluster)}`);
+  } catch {
+    console.log("Template config is NOT initialized.");
   }
 }
 

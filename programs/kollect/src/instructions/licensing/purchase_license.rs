@@ -5,10 +5,10 @@ use ip_core::state::entity::Entity;
 use crate::error::KollectError;
 use crate::events::LicensePurchased;
 use crate::state::{
-    IpConfig, IpTreasury, License, LicenseGrant, LicenseTemplate, PlatformConfig, PlatformTreasury,
+    IpConfig, IpTreasury, License, LicenseGrant, PlatformConfig, PlatformTreasury,
 };
 use crate::utils::seeds::{
-    IP_CONFIG_SEED, IP_TREASURY_SEED, LICENSE_GRANT_SEED, LICENSE_SEED, LICENSE_TEMPLATE_SEED,
+    IP_CONFIG_SEED, IP_TREASURY_SEED, LICENSE_GRANT_SEED, LICENSE_SEED,
     PLATFORM_CONFIG_SEED, PLATFORM_TREASURY_SEED,
 };
 use crate::utils::validation::{calculate_bps, validate_entity_controller};
@@ -38,20 +38,13 @@ pub struct PurchaseLicense<'info> {
 
     #[account(
         mut,
-        seeds = [LICENSE_TEMPLATE_SEED, license_template.ip_account.as_ref(), &license_template.template_name],
-        bump = license_template.bump,
-        constraint = license_template.is_active @ KollectError::LicenseTemplateNotActive,
-    )]
-    pub license_template: Box<Account<'info, LicenseTemplate>>,
-
-    /// The thin License account associated with this template.
-    #[account(
-        seeds = [LICENSE_SEED, license_template.key().as_ref()],
+        seeds = [LICENSE_SEED, license.ip_account.as_ref(), license.license_template.as_ref()],
         bump = license.bump,
+        constraint = license.is_active @ KollectError::LicenseNotActive,
     )]
     pub license: Box<Account<'info, License>>,
 
-    /// The thin LicenseGrant created for the grantee.
+    /// The LicenseGrant created for the grantee.
     #[account(
         init,
         payer = payer,
@@ -79,7 +72,7 @@ pub struct PurchaseLicense<'info> {
 
     /// IpConfig for the licensed IP (validates onboarding).
     #[account(
-        seeds = [IP_CONFIG_SEED, license_template.ip_account.as_ref()],
+        seeds = [IP_CONFIG_SEED, license.ip_account.as_ref()],
         bump = ip_config.bump,
     )]
     pub ip_config: Box<Account<'info, IpConfig>>,
@@ -87,7 +80,7 @@ pub struct PurchaseLicense<'info> {
     /// IpTreasury to receive the net payment.
     #[account(
         mut,
-        seeds = [IP_TREASURY_SEED, license_template.ip_account.as_ref()],
+        seeds = [IP_TREASURY_SEED, license.ip_account.as_ref()],
         bump = ip_treasury.bump,
     )]
     pub ip_treasury: Box<Account<'info, IpTreasury>>,
@@ -109,12 +102,12 @@ pub fn handler(ctx: Context<PurchaseLicense>) -> Result<()> {
     let grantee_entity = &ctx.accounts.grantee_entity;
     validate_entity_controller(grantee_entity, ctx.remaining_accounts)?;
 
-    let template = &ctx.accounts.license_template;
+    let license = &ctx.accounts.license;
 
     // Check max_grants
-    if template.max_grants > 0 {
+    if license.max_grants > 0 {
         require!(
-            template.current_grants < template.max_grants,
+            license.current_grants < license.max_grants,
             KollectError::MaxGrantsReached
         );
     }
@@ -122,7 +115,7 @@ pub fn handler(ctx: Context<PurchaseLicense>) -> Result<()> {
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
-    let price = template.price;
+    let price = license.price;
     let mut platform_fee = 0u64;
     let mut net_to_owner = 0u64;
 
@@ -173,34 +166,35 @@ pub fn handler(ctx: Context<PurchaseLicense>) -> Result<()> {
     }
 
     // Compute expiration
-    let expiration = if template.grant_duration > 0 {
-        now.checked_add(template.grant_duration)
+    let expiration = if license.grant_duration > 0 {
+        now.checked_add(license.grant_duration)
             .ok_or(KollectError::ArithmeticOverflow)?
     } else {
         0 // perpetual
     };
 
-    // Initialize LicenseGrant (thin account matching ip_core's LicenseGrantData)
+    // Initialize LicenseGrant
     let grant = &mut ctx.accounts.license_grant;
     grant.license = ctx.accounts.license.key();
     grant.grantee = grantee_entity.key();
     grant.granted_at = now;
     grant.expiration = expiration;
+    grant.price_paid = price;
     grant.bump = ctx.bumps.license_grant;
 
     // Increment current_grants
-    let template = &mut ctx.accounts.license_template;
-    template.current_grants = template
+    let license = &mut ctx.accounts.license;
+    license.current_grants = license
         .current_grants
         .checked_add(1)
         .ok_or(KollectError::ArithmeticOverflow)?;
-    template.updated_at = now;
+    license.updated_at = now;
 
     emit!(LicensePurchased {
         grant: grant.key(),
-        template: template.key(),
+        license: license.key(),
         grantee_entity: grantee_entity.key(),
-        origin_ip: template.ip_account,
+        origin_ip: license.ip_account,
         price_paid: price,
         platform_fee,
         net_to_owner,

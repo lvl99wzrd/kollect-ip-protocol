@@ -6,12 +6,12 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-# ip_core = "ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap"
-kollect = "AktoxndpdZfTsAdqAUFsoBPvr6dN7EoCREqDUYKqarB8"
+ip_core = "ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap"
+kollect = "GKMP1rbfBV7fDxmr1Pc5zB7uzDtSdx3rkZLfp4ao47DA"
 
 [programs.localnet]
-# ip_core = "ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap"
-kollect = "AktoxndpdZfTsAdqAUFsoBPvr6dN7EoCREqDUYKqarB8"
+ip_core = "ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap"
+kollect = "GKMP1rbfBV7fDxmr1Pc5zB7uzDtSdx3rkZLfp4ao47DA"
 
 [registry]
 url = "https://api.apr.dev"
@@ -31,6 +31,7 @@ initialize_config = "npx ts-node scripts/initialize_config.ts"
 initialize_treasury = "npx ts-node scripts/initialize_treasury.ts"
 kollect_get_entity_treasury = "npx ts-node scripts/kollect/get_entity_treasury.ts"
 kollect_get_platform_config = "npx ts-node scripts/kollect/get_platform_config.ts"
+kollect_create_license_template = "npx ts-node scripts/kollect/create_license_template.ts"
 kollect_initialize_entity_treasury = "npx ts-node scripts/kollect/initialize_entity_treasury.ts"
 kollect_initialize_platform = "npx ts-node scripts/kollect/initialize_platform.ts"
 kollect_update_platform_config = "npx ts-node scripts/kollect/update_platform_config.ts"

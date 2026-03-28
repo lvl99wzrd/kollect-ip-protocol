@@ -1,118 +1,96 @@
 use anchor_lang::prelude::*;
-use ip_core::state::entity::Entity;
 
-use crate::constants::MAX_TEMPLATE_NAME_LENGTH;
+use crate::constants::{MAX_TEMPLATE_NAME_LENGTH, MAX_URI_LENGTH};
 use crate::error::KollectError;
 use crate::events::LicenseTemplateCreated;
-use crate::state::{IpConfig, License, LicenseTemplate, PlatformConfig};
-use crate::utils::seeds::{IP_CONFIG_SEED, LICENSE_SEED, LICENSE_TEMPLATE_SEED, PLATFORM_CONFIG_SEED};
-use crate::utils::validation::validate_entity_controller;
+use crate::state::{LicenseTemplate, TemplateConfig};
+use crate::utils::seeds::{LICENSE_TEMPLATE_SEED, TEMPLATE_CONFIG_SEED};
 
 #[derive(Accounts)]
-#[instruction(template_name: [u8; MAX_TEMPLATE_NAME_LENGTH])]
 pub struct CreateLicenseTemplate<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
     #[account(
-        owner = ip_core::ID @ KollectError::InvalidIpCoreAccount,
-    )]
-    pub entity: Account<'info, Entity>,
-
-    #[account(
-        seeds = [PLATFORM_CONFIG_SEED],
-        bump = config.bump,
-    )]
-    pub config: Account<'info, PlatformConfig>,
-
-    #[account(
         mut,
-        seeds = [IP_CONFIG_SEED, ip_config.ip_account.as_ref()],
-        bump = ip_config.bump,
-        constraint = ip_config.owner_entity == entity.key() @ KollectError::IpOwnerMismatch,
-        constraint = ip_config.is_active @ KollectError::IpNotActive,
+        seeds = [TEMPLATE_CONFIG_SEED],
+        bump = template_config.bump,
     )]
-    pub ip_config: Account<'info, IpConfig>,
+    pub template_config: Account<'info, TemplateConfig>,
 
     #[account(
         init,
         payer = payer,
         space = LicenseTemplate::SIZE,
-        seeds = [LICENSE_TEMPLATE_SEED, ip_config.ip_account.as_ref(), &template_name],
+        seeds = [LICENSE_TEMPLATE_SEED, &template_config.template_count.to_le_bytes()],
         bump,
     )]
     pub license_template: Account<'info, LicenseTemplate>,
 
-    /// Thin License account created alongside the template for ip_core interop.
-    #[account(
-        init,
-        payer = payer,
-        space = License::SIZE,
-        seeds = [LICENSE_SEED, license_template.key().as_ref()],
-        bump,
-    )]
-    pub license: Account<'info, License>,
-
     pub system_program: Program<'info, System>,
-    // remaining_accounts: entity controller signer
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Debug)]
+pub struct CreateLicenseTemplateParams {
+    pub template_name: [u8; MAX_TEMPLATE_NAME_LENGTH],
+    pub transferable: bool,
+    pub derivatives_allowed: bool,
+    pub derivatives_reciprocal: bool,
+    pub derivatives_approval: bool,
+    pub commercial_use: bool,
+    pub commercial_attribution: bool,
+    pub commercial_rev_share_bps: u16,
+    pub derivative_rev_share_bps: u16,
+    pub uri: [u8; MAX_URI_LENGTH],
 }
 
 pub fn handler(
     ctx: Context<CreateLicenseTemplate>,
-    template_name: [u8; MAX_TEMPLATE_NAME_LENGTH],
-    price: u64,
-    max_grants: u16,
-    grant_duration: i64,
+    params: CreateLicenseTemplateParams,
 ) -> Result<()> {
-    let entity = &ctx.accounts.entity;
-    validate_entity_controller(entity, ctx.remaining_accounts)?;
-
-    require!(grant_duration >= 0, KollectError::InvalidGrantDuration);
-
-    // Enforce max_license_types limit
-    let max_types = ctx.accounts.config.max_license_types;
-    let current_count = ctx.accounts.ip_config.license_template_count;
-    require!(current_count < max_types, KollectError::MaxLicenseTypesReached);
-
-    // Increment license template count before any account moves
-    ctx.accounts.ip_config.license_template_count = current_count
-        .checked_add(1)
-        .ok_or(KollectError::ArithmeticOverflow)?;
+    require!(
+        params.commercial_rev_share_bps <= 10_000,
+        KollectError::InvalidShareBps
+    );
+    require!(
+        params.derivative_rev_share_bps <= 10_000,
+        KollectError::InvalidShareBps
+    );
 
     let clock = Clock::get()?;
-    let now = clock.unix_timestamp;
+    let template_id = ctx.accounts.template_config.template_count;
 
     // Initialize LicenseTemplate
     let template = &mut ctx.accounts.license_template;
-    template.ip_account = ctx.accounts.ip_config.ip_account;
-    template.ip_config = ctx.accounts.ip_config.key();
-    template.creator_entity = entity.key();
-    template.template_name = template_name;
-    template.price = price;
-    template.max_grants = max_grants;
-    template.current_grants = 0;
-    template.grant_duration = grant_duration;
+    template.template_id = template_id;
+    template.creator = ctx.accounts.payer.key();
+    template.template_name = params.template_name;
+    template.transferable = params.transferable;
+    template.derivatives_allowed = params.derivatives_allowed;
+    template.derivatives_reciprocal = params.derivatives_reciprocal;
+    template.derivatives_approval = params.derivatives_approval;
+    template.commercial_use = params.commercial_use;
+    template.commercial_attribution = params.commercial_attribution;
+    template.commercial_rev_share_bps = params.commercial_rev_share_bps;
+    template.derivative_rev_share_bps = params.derivative_rev_share_bps;
+    template.uri = params.uri;
     template.is_active = true;
-    template.created_at = now;
-    template.updated_at = now;
+    template.created_at = clock.unix_timestamp;
     template.bump = ctx.bumps.license_template;
 
-    // Initialize thin License (matches ip_core's LicenseData exactly)
-    let license = &mut ctx.accounts.license;
-    license.origin_ip = ctx.accounts.ip_config.ip_account;
-    license.authority = entity.key();
-    license.derivatives_allowed = true;
-    license.created_at = now;
-    license.bump = ctx.bumps.license;
+    // Increment counter
+    ctx.accounts.template_config.template_count = template_id
+        .checked_add(1)
+        .ok_or(KollectError::ArithmeticOverflow)?;
 
     emit!(LicenseTemplateCreated {
         template: template.key(),
-        license: license.key(),
-        ip_account: template.ip_account,
-        creator_entity: entity.key(),
-        template_name,
-        price,
-        max_grants,
+        template_id,
+        creator: ctx.accounts.payer.key(),
+        template_name: params.template_name,
+        derivatives_allowed: params.derivatives_allowed,
+        commercial_use: params.commercial_use,
+        derivative_rev_share_bps: params.derivative_rev_share_bps,
     });
 
     Ok(())

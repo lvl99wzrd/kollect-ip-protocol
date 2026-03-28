@@ -9,7 +9,7 @@ pub mod utils;
 
 use instructions::*;
 
-declare_id!("AktoxndpdZfTsAdqAUFsoBPvr6dN7EoCREqDUYKqarB8");
+declare_id!("GKMP1rbfBV7fDxmr1Pc5zB7uzDtSdx3rkZLfp4ao47DA");
 
 #[program]
 pub mod kollect {
@@ -119,18 +119,9 @@ pub mod kollect {
 
     pub fn create_license_template(
         ctx: Context<CreateLicenseTemplate>,
-        template_name: [u8; 32],
-        price: u64,
-        max_grants: u16,
-        grant_duration: i64,
+        params: CreateLicenseTemplateParams,
     ) -> Result<()> {
-        instructions::licensing::create_license_template::handler(
-            ctx,
-            template_name,
-            price,
-            max_grants,
-            grant_duration,
-        )
+        instructions::licensing::create_license_template::handler(ctx, params)
     }
 
     pub fn update_license_template(
@@ -140,35 +131,28 @@ pub mod kollect {
         instructions::licensing::update_license_template::handler(ctx, params)
     }
 
-    pub fn create_royalty_policy(
-        ctx: Context<CreateRoyaltyPolicy>,
-        derivative_share_bps: u16,
-        allow_remix: bool,
-        allow_cover: bool,
-        allow_sample: bool,
-        attribution_required: bool,
-        commercial_use: bool,
+    pub fn create_license(
+        ctx: Context<CreateLicense>,
+        params: CreateLicenseParams,
     ) -> Result<()> {
-        instructions::licensing::create_royalty_policy::handler(
-            ctx,
-            derivative_share_bps,
-            allow_remix,
-            allow_cover,
-            allow_sample,
-            attribution_required,
-            commercial_use,
-        )
+        instructions::licensing::create_license::handler(ctx, params)
     }
 
-    pub fn update_royalty_policy(
-        ctx: Context<UpdateRoyaltyPolicy>,
-        params: UpdateRoyaltyPolicyParams,
+    pub fn update_license(
+        ctx: Context<UpdateLicense>,
+        params: UpdateLicenseParams,
     ) -> Result<()> {
-        instructions::licensing::update_royalty_policy::handler(ctx, params)
+        instructions::licensing::update_license::handler(ctx, params)
     }
 
     pub fn purchase_license(ctx: Context<PurchaseLicense>) -> Result<()> {
         instructions::licensing::purchase_license::handler(ctx)
+    }
+
+    pub fn validate_derivative_grant<'a, 'b, 'c, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, ValidateDerivativeGrant<'info>>,
+    ) -> Result<()> {
+        instructions::licensing::validate_derivative_grant::handler(ctx)
     }
 
     // -- Playback & Settlement --

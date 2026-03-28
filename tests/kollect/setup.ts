@@ -40,7 +40,7 @@ export const SETTLEMENT_SEED = Buffer.from("settlement");
 export const LICENSE_TEMPLATE_SEED = Buffer.from("license_template");
 export const LICENSE_SEED = Buffer.from("license");
 export const LICENSE_GRANT_SEED = Buffer.from("license_grant");
-export const ROYALTY_POLICY_SEED = Buffer.from("royalty_policy");
+export const TEMPLATE_CONFIG_SEED = Buffer.from("template_config");
 export const ROYALTY_SPLIT_SEED = Buffer.from("royalty_split");
 
 // ip_core PDA seeds
@@ -58,7 +58,9 @@ export const venueCid = (text: string): number[] => padBytes(text, 96);
 
 export const venueName = (name: string): number[] => padBytes(name, 64);
 
-export const templateName = (name: string): number[] => padBytes(name, 32);
+export const templateName = (name: string): number[] => padBytes(name, 64);
+
+export const templateUri = (uri: string): number[] => padBytes(uri, 96);
 
 export const venueIdBuffer = (venueId: number): Buffer => {
   const buf = Buffer.alloc(8);
@@ -69,6 +71,12 @@ export const venueIdBuffer = (venueId: number): Buffer => {
 export const i64Buffer = (value: number): Buffer => {
   const buf = Buffer.alloc(8);
   buf.writeBigInt64LE(BigInt(value));
+  return buf;
+};
+
+export const u64Buffer = (value: number): Buffer => {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(BigInt(value));
   return buf;
 };
 
@@ -338,23 +346,32 @@ export function deriveSettlementPda(
   )[0];
 }
 
-export function deriveLicenseTemplatePda(
-  ipPda: PublicKey,
-  name: number[],
+export function deriveTemplateConfigPda(
   kollectProgramId: PublicKey,
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [LICENSE_TEMPLATE_SEED, ipPda.toBuffer(), Buffer.from(name)],
+    [TEMPLATE_CONFIG_SEED],
+    kollectProgramId,
+  )[0];
+}
+
+export function deriveLicenseTemplatePda(
+  templateId: number,
+  kollectProgramId: PublicKey,
+): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [LICENSE_TEMPLATE_SEED, u64Buffer(templateId)],
     kollectProgramId,
   )[0];
 }
 
 export function deriveLicensePda(
+  ipPda: PublicKey,
   licenseTemplatePda: PublicKey,
   kollectProgramId: PublicKey,
 ): PublicKey {
   return PublicKey.findProgramAddressSync(
-    [LICENSE_SEED, licenseTemplatePda.toBuffer()],
+    [LICENSE_SEED, ipPda.toBuffer(), licenseTemplatePda.toBuffer()],
     kollectProgramId,
   )[0];
 }
@@ -370,14 +387,15 @@ export function deriveLicenseGrantPda(
   )[0];
 }
 
-export function deriveRoyaltyPolicyPda(
-  licenseTemplatePda: PublicKey,
-  kollectProgramId: PublicKey,
-): PublicKey {
-  return PublicKey.findProgramAddressSync(
-    [ROYALTY_POLICY_SEED, licenseTemplatePda.toBuffer()],
-    kollectProgramId,
-  )[0];
+/**
+ * Helper: read the current template_count from the TemplateConfig account.
+ */
+export async function getTemplateCount(
+  kollectProgram: Program<Kollect>,
+): Promise<number> {
+  const pda = deriveTemplateConfigPda(kollectProgram.programId);
+  const config = await kollectProgram.account.templateConfig.fetch(pda);
+  return (config.templateCount as anchor.BN).toNumber();
 }
 
 export function deriveRoyaltySplitPda(

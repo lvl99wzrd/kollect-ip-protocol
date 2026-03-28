@@ -18,10 +18,11 @@ import {
   deriveLicenseTemplatePda,
   deriveLicensePda,
   deriveLicenseGrantPda,
-  deriveRoyaltyPolicyPda,
   deriveRoyaltySplitPda,
+  getTemplateCount,
   randomHash,
   templateName,
+  templateUri,
   signerMeta,
   venueCid,
 } from "./setup";
@@ -99,48 +100,48 @@ describe("kollect royalty depth enforcement", () => {
   ) {
     const parentIpConfig = deriveIpConfigPda(parentIp, kollect.programId);
 
-    // 1. Create license template (price=0, perpetual)
+    // 1. Create global license template (auto-incremented ID)
+    const templateId = await getTemplateCount(kollect);
     const tplNameBytes = templateName(tplLabel);
     const licenseTemplatePda = deriveLicenseTemplatePda(
-      parentIp,
-      tplNameBytes,
+      templateId,
       kollect.programId,
     );
-    const licensePda = deriveLicensePda(licenseTemplatePda, kollect.programId);
 
     await kollect.methods
-      .createLicenseTemplate(
-        tplNameBytes,
-        new anchor.BN(0), // free
-        0, // unlimited grants
-        new anchor.BN(0), // perpetual
-      )
-      .accountsPartial({
-        entity: ownerEntity,
-        ipConfig: parentIpConfig,
+      .createLicenseTemplate({
+        templateName: tplNameBytes,
+        transferable: true,
+        derivativesAllowed: true,
+        derivativesReciprocal: false,
+        derivativesApproval: false,
+        commercialUse: true,
+        commercialAttribution: false,
+        commercialRevShareBps: 0,
+        derivativeRevShareBps: DERIVATIVE_SHARE_BPS,
+        uri: templateUri(""),
       })
-      .remainingAccounts([signerMeta(authority.publicKey)])
       .rpc();
 
-    // 2. Create royalty policy
-    const royaltyPolicyPda = deriveRoyaltyPolicyPda(
+    // 2. Create per-IP license
+    const licensePda = deriveLicensePda(
+      parentIp,
       licenseTemplatePda,
       kollect.programId,
     );
 
     await kollect.methods
-      .createRoyaltyPolicy(
-        DERIVATIVE_SHARE_BPS,
-        true, // allow_remix
-        true, // allow_cover
-        true, // allow_sample
-        false, // attribution_required
-        true, // commercial_use
-      )
+      .createLicense({
+        price: new anchor.BN(0),
+        maxGrants: 0,
+        grantDuration: new anchor.BN(0),
+        derivativeRevShareBps: DERIVATIVE_SHARE_BPS,
+      })
       .accountsPartial({
         entity: ownerEntity,
         ipConfig: parentIpConfig,
         licenseTemplate: licenseTemplatePda,
+        license: licensePda,
       })
       .remainingAccounts([signerMeta(authority.publicKey)])
       .rpc();
@@ -170,7 +171,6 @@ describe("kollect royalty depth enforcement", () => {
       .purchaseLicense()
       .accountsPartial({
         granteeEntity: ownerEntity,
-        licenseTemplate: licenseTemplatePda,
         license: licensePda,
         licenseGrant: licenseGrantPda,
         payerTokenAccount: payerAta.address,
@@ -182,7 +182,7 @@ describe("kollect royalty depth enforcement", () => {
 
     // 4. Create derivative link in ip_core
     await ipCore.methods
-      .createDerivativeLink(kollect.programId)
+      .createDerivativeLink()
       .accountsPartial({
         parentIp,
         childIp,
@@ -190,6 +190,7 @@ describe("kollect royalty depth enforcement", () => {
         controller: authority.publicKey,
         licenseGrant: licenseGrantPda,
         license: licensePda,
+        licenseProgram: kollect.programId,
       })
       .rpc();
 
@@ -215,8 +216,7 @@ describe("kollect royalty depth enforcement", () => {
       .remainingAccounts([
         { pubkey: derivativeLinkPda, isSigner: false, isWritable: false },
         { pubkey: licenseGrantPda, isSigner: false, isWritable: false },
-        { pubkey: royaltyPolicyPda, isSigner: false, isWritable: false },
-        { pubkey: licenseTemplatePda, isSigner: false, isWritable: false },
+        { pubkey: licensePda, isSigner: false, isWritable: false },
         { pubkey: royaltySplitPda, isSigner: false, isWritable: true },
       ])
       .rpc();

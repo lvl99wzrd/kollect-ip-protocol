@@ -117,50 +117,46 @@ pub struct VenueReactivated {
 #[event]
 pub struct LicenseTemplateCreated {
     pub template: Pubkey,
-    pub license: Pubkey,
-    pub ip_account: Pubkey,
-    pub creator_entity: Pubkey,
-    pub template_name: [u8; 32],
-    pub price: u64,
-    pub max_grants: u16,
+    pub template_id: u64,
+    pub creator: Pubkey,
+    pub template_name: [u8; 64],
+    pub derivatives_allowed: bool,
+    pub commercial_use: bool,
+    pub derivative_rev_share_bps: u16,
 }
 
 #[event]
 pub struct LicenseTemplateUpdated {
     pub template: Pubkey,
-    pub price: u64,
-    pub max_grants: u16,
-    pub grant_duration: i64,
     pub is_active: bool,
     pub updated_at: i64,
 }
 
 #[event]
-pub struct RoyaltyPolicyCreated {
-    pub policy: Pubkey,
-    pub template: Pubkey,
-    pub derivative_share_bps: u16,
-    pub allow_remix: bool,
-    pub allow_cover: bool,
-    pub allow_sample: bool,
+pub struct LicenseCreated {
+    pub license: Pubkey,
+    pub ip_account: Pubkey,
+    pub license_template: Pubkey,
+    pub owner_entity: Pubkey,
+    pub price: u64,
+    pub max_grants: u16,
+    pub derivative_rev_share_bps: u16,
 }
 
 #[event]
-pub struct RoyaltyPolicyUpdated {
-    pub policy: Pubkey,
-    pub derivative_share_bps: u16,
-    pub allow_remix: bool,
-    pub allow_cover: bool,
-    pub allow_sample: bool,
-    pub attribution_required: bool,
-    pub commercial_use: bool,
+pub struct LicenseUpdated {
+    pub license: Pubkey,
+    pub price: u64,
+    pub grant_duration: i64,
+    pub is_active: bool,
+    pub derivative_rev_share_bps: u16,
     pub updated_at: i64,
 }
 
 #[event]
 pub struct LicensePurchased {
     pub grant: Pubkey,
-    pub template: Pubkey,
+    pub license: Pubkey,
     pub grantee_entity: Pubkey,
     pub origin_ip: Pubkey,
     pub price_paid: u64,

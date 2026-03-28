@@ -6,11 +6,11 @@ use ip_core::state::{derivative_link::DerivativeLink, entity::Entity, ip_account
 use crate::error::KollectError;
 use crate::events::{IpOnboarded, RoyaltySplitCreated};
 use crate::state::{
-    EntityTreasury, IpConfig, IpTreasury, PlatformConfig, RoyaltyPolicy, RoyaltySplit,
+    EntityTreasury, IpConfig, IpTreasury, License, PlatformConfig, RoyaltySplit,
 };
 use crate::utils::seeds::{
-    ENTITY_TREASURY_SEED, IP_CONFIG_SEED, IP_TREASURY_SEED, LICENSE_GRANT_SEED, LICENSE_SEED,
-    PLATFORM_CONFIG_SEED, ROYALTY_POLICY_SEED, ROYALTY_SPLIT_SEED,
+    ENTITY_TREASURY_SEED, IP_CONFIG_SEED, IP_TREASURY_SEED, LICENSE_GRANT_SEED,
+    PLATFORM_CONFIG_SEED, ROYALTY_SPLIT_SEED,
 };
 
 #[derive(Accounts)]
@@ -82,9 +82,8 @@ pub struct OnboardIp<'info> {
     // remaining_accounts when onboarding a derivative (empty otherwise):
     // [0] derivative_link (ip_core-owned)
     // [1] license_grant (PDA: [LICENSE_GRANT_SEED, license.key, entity.key])
-    // [2] royalty_policy (PDA: [ROYALTY_POLICY_SEED, license_template.key])
-    // [3] license_template (PDA: [LICENSE_TEMPLATE_SEED, ip_account.key, template_name])
-    // [4] royalty_split (uninit PDA: [ROYALTY_SPLIT_SEED, child_ip.key, parent_ip.key])
+    // [2] license (PDA: [LICENSE_SEED, ip_account.key, license_template.key])
+    // [3] royalty_split (uninit PDA: [ROYALTY_SPLIT_SEED, child_ip.key, parent_ip.key])
 }
 
 pub fn handler<'a, 'b, 'c, 'info>(
@@ -139,9 +138,8 @@ pub fn handler<'a, 'b, 'c, 'info>(
 /// Expects remaining_accounts:
 ///   [0] derivative_link   — ip_core-owned DerivativeLink for child_ip
 ///   [1] license_grant     — PDA [LICENSE_GRANT_SEED, license.key, entity.key]
-///   [2] royalty_policy    — PDA [ROYALTY_POLICY_SEED, license_template.key]
-///   [3] license_template  — the LicenseTemplate under which the derivative was licensed
-///   [4] royalty_split     — uninit PDA [ROYALTY_SPLIT_SEED, child_ip.key, parent_ip.key]
+///   [2] license           — PDA [LICENSE_SEED, parent_ip.key, license_template.key]
+///   [3] royalty_split     — uninit PDA [ROYALTY_SPLIT_SEED, child_ip.key, parent_ip.key]
 fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
     ctx: &Context<'a, 'b, 'c, 'info, OnboardIp<'info>>,
     now: i64,
@@ -150,13 +148,12 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
     let entity = &ctx.accounts.entity;
     let remaining = ctx.remaining_accounts;
 
-    require!(remaining.len() >= 5, KollectError::InvalidDerivativeLink);
+    require!(remaining.len() >= 4, KollectError::InvalidDerivativeLink);
 
     let derivative_link_info = &remaining[0];
     let license_grant_info = &remaining[1];
-    let royalty_policy_info = &remaining[2];
-    let license_template_info = &remaining[3];
-    let royalty_split_info = &remaining[4];
+    let license_info = &remaining[2];
+    let royalty_split_info = &remaining[3];
 
     // Validate derivative_link is owned by ip_core
     require!(
@@ -176,49 +173,39 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
     );
 
     // Validate derivative link's license field references the provided license grant.
-    // ip_core stores the LicenseGrant key in derivative_link.license.
     require!(
         derivative_link.license == license_grant_info.key(),
         KollectError::InvalidDerivativeLink
     );
 
-    // Derive the expected License key from the license_template
-    let (expected_license_key, _) = Pubkey::find_program_address(
-        &[LICENSE_SEED, license_template_info.key().as_ref()],
-        ctx.program_id,
+    // Validate the License account is owned by this program
+    require!(
+        license_info.owner == ctx.program_id,
+        KollectError::InvalidLicenseTemplate
     );
 
-    // Verify the LicenseGrant PDA for this entity under the computed license key
+    // Deserialize License and validate relationships
+    let license_data = license_info.try_borrow_data()?;
+    let license = License::try_deserialize(&mut &license_data[..])
+        .map_err(|_| error!(KollectError::InvalidLicenseTemplate))?;
+
+    // License must reference the parent IP
+    require!(
+        license.ip_account == derivative_link.parent_ip,
+        KollectError::InvalidLicenseTemplate
+    );
+
+    // Verify the LicenseGrant PDA for this entity under the license
     let (expected_grant_key, _) = Pubkey::find_program_address(
         &[
             LICENSE_GRANT_SEED,
-            expected_license_key.as_ref(),
+            license_info.key().as_ref(),
             entity.key().as_ref(),
         ],
         ctx.program_id,
     );
     require!(
         license_grant_info.key() == expected_grant_key,
-        KollectError::InvalidLicenseTemplate
-    );
-
-    // Derive and verify RoyaltyPolicy PDA from the license_template
-    let (expected_policy_key, _) = Pubkey::find_program_address(
-        &[ROYALTY_POLICY_SEED, license_template_info.key().as_ref()],
-        ctx.program_id,
-    );
-    require!(
-        royalty_policy_info.key() == expected_policy_key,
-        KollectError::InvalidRoyaltySplitPda
-    );
-
-    // Deserialize royalty policy and verify internal consistency
-    let royalty_policy_data = royalty_policy_info.try_borrow_data()?;
-    let royalty_policy = RoyaltyPolicy::try_deserialize(&mut &royalty_policy_data[..])
-        .map_err(|_| error!(KollectError::InvalidLicenseTemplate))?;
-
-    require!(
-        royalty_policy.license_template == license_template_info.key(),
         KollectError::InvalidLicenseTemplate
     );
 
@@ -266,8 +253,8 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
         derivative_ip: ip_account.key(),
         origin_ip: parent_ip,
         license_grant: license_grant_info.key(),
-        royalty_policy: royalty_policy_info.key(),
-        share_bps: royalty_policy.derivative_share_bps,
+        license: license_info.key(),
+        share_bps: license.derivative_rev_share_bps,
         total_distributed: 0,
         created_at: now,
         bump: split_bump,
@@ -281,7 +268,7 @@ fn create_royalty_split_for_derivative<'a, 'b, 'c, 'info>(
         split: expected_split_key,
         derivative_ip: ip_account.key(),
         origin_ip: parent_ip,
-        share_bps: royalty_policy.derivative_share_bps,
+        share_bps: license.derivative_rev_share_bps,
     });
 
     Ok(())

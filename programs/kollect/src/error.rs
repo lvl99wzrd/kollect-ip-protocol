@@ -56,16 +56,20 @@ pub enum KollectError {
     InsufficientSignatures,
     #[msg("License template is not active")]
     LicenseTemplateNotActive,
-    #[msg("Maximum grants reached for this license template")]
+    #[msg("Maximum grants reached for this license")]
     MaxGrantsReached,
-    #[msg("License already granted to this entity for this template")]
+    #[msg("License already granted to this entity")]
     LicenseAlreadyGranted,
     #[msg("License has expired")]
     LicenseExpired,
     #[msg("Invalid license template")]
     InvalidLicenseTemplate,
-    #[msg("Royalty policy already exists for this template")]
-    RoyaltyPolicyAlreadyExists,
+    #[msg("Invalid license terms")]
+    InvalidLicenseTerms,
+    #[msg("Derivative rev share below template minimum")]
+    DerivativeRevShareTooLow,
+    #[msg("License is not active")]
+    LicenseNotActive,
     #[msg("Royalty split already exists for this derivative")]
     RoyaltySplitAlreadyExists,
     #[msg("Invalid derivative link")]
