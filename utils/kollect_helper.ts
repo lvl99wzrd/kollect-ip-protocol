@@ -6,6 +6,8 @@ const PLATFORM_TREASURY_SEED = "platform_treasury";
 const ENTITY_TREASURY_SEED = "entity_treasury";
 const TEMPLATE_CONFIG_SEED = "template_config";
 const LICENSE_TEMPLATE_SEED = "license_template";
+const LICENSE_SEED = "license";
+const LICENSE_GRANT_SEED = "license_grant";
 
 export const derivePlatformConfigPda = (
   programId: PublicKey,
@@ -56,6 +58,36 @@ export const deriveLicenseTemplatePda = (
 ): [PublicKey, number] => {
   return PublicKey.findProgramAddressSync(
     [Buffer.from(LICENSE_TEMPLATE_SEED), u64LeBuffer(templateId)],
+    programId,
+  );
+};
+
+export const deriveLicensePda = (
+  programId: PublicKey,
+  ipAccount: PublicKey,
+  licenseTemplate: PublicKey,
+): [PublicKey, number] => {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from(LICENSE_SEED),
+      ipAccount.toBuffer(),
+      licenseTemplate.toBuffer(),
+    ],
+    programId,
+  );
+};
+
+export const deriveLicenseGrantPda = (
+  programId: PublicKey,
+  license: PublicKey,
+  granteeEntity: PublicKey,
+): [PublicKey, number] => {
+  return PublicKey.findProgramAddressSync(
+    [
+      Buffer.from(LICENSE_GRANT_SEED),
+      license.toBuffer(),
+      granteeEntity.toBuffer(),
+    ],
     programId,
   );
 };
