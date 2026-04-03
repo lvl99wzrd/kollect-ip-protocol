@@ -1,4 +1,4 @@
-use crate::constants::{MAX_HANDLE_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
+use crate::constants::{MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
 
 /// Seed prefix for protocol config PDA.
 pub const CONFIG_SEED: &[u8] = b"config";
@@ -8,6 +8,9 @@ pub const TREASURY_SEED: &[u8] = b"treasury";
 
 /// Seed prefix for entity PDA.
 pub const ENTITY_SEED: &[u8] = b"entity";
+
+/// Seed prefix for creator entity counter PDA.
+pub const CREATOR_ENTITY_COUNTER_SEED: &[u8] = b"entity_counter";
 
 /// Seed prefix for metadata schema PDA.
 pub const METADATA_SCHEMA_SEED: &[u8] = b"metadata_schema";
@@ -39,13 +42,16 @@ pub fn treasury_seeds() -> [&'static [u8]; 1] {
     [TREASURY_SEED]
 }
 
-/// Returns seeds for entity PDA: `["entity", creator, handle]`
+/// Returns seeds for creator entity counter PDA: `["entity_counter", creator]`
 #[inline]
-pub fn entity_seeds<'a>(
-    creator: &'a [u8; 32],
-    handle: &'a [u8; MAX_HANDLE_LENGTH],
-) -> [&'a [u8]; 3] {
-    [ENTITY_SEED, creator, handle]
+pub fn creator_entity_counter_seeds<'a>(creator: &'a [u8; 32]) -> [&'a [u8]; 2] {
+    [CREATOR_ENTITY_COUNTER_SEED, creator]
+}
+
+/// Returns seeds for entity PDA: `["entity", creator, index_le_bytes]`
+#[inline]
+pub fn entity_seeds<'a>(creator: &'a [u8; 32], index: &'a [u8; 8]) -> [&'a [u8]; 3] {
+    [ENTITY_SEED, creator, index]
 }
 
 /// Returns seeds for metadata schema PDA: `["metadata_schema", id, version]`

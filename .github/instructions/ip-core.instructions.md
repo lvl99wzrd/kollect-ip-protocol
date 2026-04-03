@@ -29,8 +29,6 @@ Defined in shared constants module:
 - MAX_SCHEMA_ID_LENGTH = 32
 - MAX_VERSION_LENGTH = 16
 - MAX_CID_LENGTH = 96
-- MAX_HANDLE_LENGTH = 32
-- MAX_CONTROLLERS = 5
 
 Copilot must never invent dynamic sizing.
 
@@ -44,16 +42,7 @@ Define explicit errors:
 - TreasuryAlreadyInitialized
 - Unauthorized
 - InvalidAuthority
-- InvalidThreshold
-- ControllerLimitExceeded
-- ControllerNotFound
-- CannotRemoveLastController
-- InsufficientSignatures
 - EntityNotInitialized
-- InvalidHandle
-- HandleTooLong
-- EmptyHandle
-- HandleAlreadyExists
 - MetadataSchemaNotFound
 - InvalidMetadataRevision
 - IPAlreadyExists
@@ -61,12 +50,11 @@ Define explicit errors:
 - DerivativeAlreadyExists
 - ArithmeticOverflow
 - EmptyCid
-- InvalidLicenseOwner
-- InvalidLicenseOrigin
-- DerivativesNotAllowed
-- LicenseExpired
+- LicenseValidationFailed
 - InvalidTokenMint
 - InvalidTreasuryAuthority
+- MissingTokenAccount
+- MissingTokenProgram
 
 ---
 
@@ -75,79 +63,58 @@ Define explicit errors:
 ## Design Principle
 
 - Licenses live in a separate on-chain program.
-- `ip_core` must treat license as an opaque PDA owned by a verified License Program.
-- `ip_core` only validates:
-  - Ownership (program owner check)
-  - Structural correctness
-  - Capability flags required for derivative creation
+- `ip_core` delegates **all** license validation to the external License Program via CPI.
+- `ip_core` does NOT deserialize, inspect, or interpret any license account fields.
+- Any program that implements the `validate_derivative_grant` CPI interface can serve as a License Program.
 
 No economic logic may be replicated inside `ip_core`.
 
 ---
 
-## Minimal License Interface (Required by ip_core)
+## CPI Interface: `validate_derivative_grant`
 
-The License account (owned by external program) must contain at minimum:
+When creating or updating a derivative link, `ip_core` invokes the License Program's
+`validate_derivative_grant` instruction via raw `invoke()`.
 
-- origin_ip: Pubkey
-- derivatives_allowed: bool
-- expiration: i64 (0 = no expiration)
-- bump: u8
+### Discriminator
 
-Additional fields are allowed but ignored by `ip_core`.
+```
+sha256("global:validate_derivative_grant")[..8]
+```
+
+### Accounts (all read-only, non-signer)
+
+| #   | Account        | Description                        |
+| --- | -------------- | ---------------------------------- |
+| 0   | license_grant  | The LicenseGrant PDA               |
+| 1   | license        | The License PDA                    |
+| 2   | parent_ip      | The parent IPAccount               |
+| 3   | grantee_entity | The Entity creating the derivative |
+
+### Instruction Data
+
+8-byte discriminator only. No additional arguments.
+
+### Expected Behavior
+
+The License Program must:
+
+1. Validate `license_grant` and `license` are valid PDAs owned by itself.
+2. Validate `license.origin_ip == parent_ip`.
+3. Validate `license.derivatives_allowed == true`.
+4. Validate grant expiration (if non-zero, must be in the future).
+5. Validate `license_grant.grantee == grantee_entity`.
+6. Return `Ok(())` on success, or an error on failure.
+
+If the CPI returns an error, `ip_core` maps it to `LicenseValidationFailed`.
 
 ---
 
-## License Validation Rules (Canonical)
+## Minimal License Interface
 
-Before `DerivativeLink` creation:
-
-1. License account owner must equal `LICENSE_PROGRAM_ID`.
-2. License.origin_ip must equal `parent_ip`.
-3. `derivatives_allowed == true`.
-4. If `expiration != 0`, then:
-
-   ```
-   expiration > Clock::get()?.unix_timestamp
-   ```
-
-5. License account must not be closed.
-
-Failure of any rule → instruction fails.
-
----
-
-# SIMPLE DEFAULT LICENSE (REFERENCE IMPLEMENTATION)
-
-A minimal "FreeToUse" license MAY contain:
-
-```
-{
-  transferable: true,
-  royaltyPolicy: Pubkey::default(),
-  defaultMintingFee: 0,
-  expiration: 0,
-  commercialUse: false,
-  commercialAttribution: false,
-  commercializerChecker: Pubkey::default(),
-  commercializerCheckerData: [],
-  commercialRevShare: 0,
-  commercialRevCeiling: 0,
-  derivativesAllowed: true,
-  derivativesAttribution: true,
-  derivativesApproval: false,
-  derivativesReciprocal: true,
-  derivativeRevCeiling: 0,
-  currency: Pubkey::default(),
-  uri: <string>
-}
-```
-
-`ip_core` ignores all fields except:
-
-- origin_ip
-- derivativesAllowed
-- expiration
+The License Program is free to define any account layout. `ip_core` imposes no
+structural requirements on license accounts — it only requires the program to
+implement the `validate_derivative_grant` CPI endpoint described above.
 
 ---
 
@@ -160,13 +127,14 @@ A minimal "FreeToUse" license MAY contain:
 | initialize_treasury       | ProtocolTreasury                             |
 | withdraw_treasury         | SPL token account (authority = treasury PDA) |
 | create_metadata_schema    | MetadataSchema                               |
-| create_entity             | Entity                                       |
-| update_entity_controllers | Entity                                       |
+| create_entity             | Entity, CreatorEntityCounter                 |
+| transfer_entity_control   | Entity                                       |
 | create_entity_metadata    | MetadataAccount, Entity                      |
 | create_ip                 | IPAccount                                    |
 | transfer_ip               | IPAccount                                    |
 | create_ip_metadata        | MetadataAccount, IPAccount                   |
 | create_derivative_link    | DerivativeLink                               |
+| update_derivative_license | DerivativeLink                               |
 
 Any instruction not listed is invalid.
 
@@ -326,14 +294,14 @@ IP:
 
 ### create_entity_metadata
 
-- Validates entity multisig.
+- Requires entity controller signature.
 - Creates MetadataAccount.
 - Increments entity.current_metadata_revision.
 - Updates entity.updated_at.
 
 ### create_ip_metadata
 
-- Validates current_owner_entity.
+- Requires owner entity controller signature.
 - Creates MetadataAccount.
 - Increments ip.current_metadata_revision.
 - Updates ip.updated_at.
@@ -349,21 +317,19 @@ No delete.
 ## PDA Seeds
 
 ```
-["entity", creator_pubkey, handle]
+["entity", creator_pubkey, index_le_bytes]
 ```
 
 Where:
 
-- handle must be lowercase alphanumeric and underscores only
-- length ∈ [1, 32]
-- must match regex: ^[a-z0-9_]{1,32}$
+- index is a u64 sequential index derived from CreatorEntityCounter
+- stored as 8-byte little-endian
 
 ## Fields
 
 - creator: Pubkey
-- handle: [u8; MAX_HANDLE_LENGTH]
-- controllers: Vec (max 5)
-- signature_threshold: u8
+- index: u64
+- controller: Pubkey
 - current_metadata_revision: u64
 - created_at: i64
 - updated_at: i64
@@ -371,47 +337,68 @@ Where:
 
 ## Hard Constraints
 
-- controllers.len() ∈ [1, 5]
-- signature_threshold ∈ [1, controllers.len()]
-- creator must be included in controllers during creation.
-- creator can be removed from controllers but only if signature_threshold is updated accordingly.
-- handle immutable
+- controller must be a signer for all entity mutations.
+- controller can be any Pubkey (EOA or external multisig PDA such as Squads).
+- index immutable
 - creator immutable
 - created_at immutable
-- handle unique per creator (PDA uniqueness enforced)
+- index unique per creator (PDA uniqueness enforced)
 
-## Multisig Validation
+## Authorization
 
 For any mutation:
 
-- signer_count >= signature_threshold
-- every signer must be in controllers
+- controller must be a transaction signer.
+
+Multisig is delegated to external protocols (e.g., Squads). The controller field can point to a multisig PDA.
 
 ## Instructions
 
 ### create_entity
 
+- Initializes CreatorEntityCounter (via init_if_needed) if not yet created.
+- Derives entity index from counter.entity_count.
 - Derives PDA from:
   ```
-  ["entity", creator_pubkey, handle]
+  ["entity", creator_pubkey, index_le_bytes]
   ```
-- Fails if PDA already exists.
-- Validates handle format.
-- Adds creator as first controller.
-- Validates threshold.
+- Increments counter.entity_count.
+- Sets controller = creator.
 - Sets current_metadata_revision = 0.
 - Sets created_at and updated_at.
 
-### update_entity_controllers
+### transfer_entity_control
 
-- Updates controllers with new list.
-- Must respect MAX_CONTROLLERS.
-- Must maintain valid threshold.
+- Requires current controller signature.
+- Updates controller to new_controller.
 - Updates updated_at.
-- Cannot remove creator.
-- Cannot modify handle.
+- Cannot modify index.
+- Cannot modify creator.
 
 No delete allowed.
+
+---
+
+# 5a. CreatorEntityCounter
+
+## PDA Seeds
+
+```
+["entity_counter", creator_pubkey]
+```
+
+## Fields
+
+- creator: Pubkey
+- entity_count: u64
+- bump: u8
+
+## Invariants
+
+- One per creator wallet.
+- Initialized on first create_entity call via init_if_needed.
+- entity_count is monotonically increasing.
+- entity_count must only be incremented by create_entity.
 
 ---
 
@@ -448,7 +435,7 @@ No delete allowed.
 
 ### create_ip
 
-- Requires registrant_entity multisig approval.
+- Requires registrant entity controller signature.
 - Requires ProtocolConfig account.
 - Requires ProtocolTreasury account.
 - Requires treasury token account.
@@ -471,7 +458,7 @@ No delete allowed.
 5. Payer token account must:
    - Have mint = `config.registration_currency`
    - Be owned by a transaction signer
-6. The payer must be one of the validated multisig signers of `registrant_entity`.
+6. The payer must be the controller of `registrant_entity`.
 
 ### Payment Enforcement
 
@@ -496,7 +483,7 @@ No other fields may be mutated.
 
 ### transfer_ip
 
-- Requires current_owner_entity multisig approval.
+- Requires current owner entity controller signature.
 - Updates `current_owner_entity` only.
 - Must not mutate:
   - content_hash
@@ -530,11 +517,8 @@ No delete allowed.
 
 - parent_ip must exist.
 - child_ip must exist.
-- license must:
-  - Be owned by LICENSE_PROGRAM_ID
-  - Reference parent_ip
-  - Allow derivatives
-- Immutable except optional license update.
+- license must reference a valid license account.
+- Immutable except license field (via update_derivative_license).
 - No economic fields.
 - No retroactive modification.
 
@@ -545,13 +529,17 @@ No delete allowed.
 - Requires parent_ip exists.
 - Requires child_ip exists.
 - license provided at creation.
-- license.owner == caller_program_id.
-- Requires child owner approval.
+- Requires child owner entity controller signature.
 - Fails if already exists.
+- Invokes `validate_derivative_grant` CPI on the provided License Program.
+- If CPI fails → `LicenseValidationFailed`.
 
 ### update_derivative_license
 
-- Optional.
+- Requires child owner entity controller signature.
+- Updates only the `license` field.
+- Invokes `validate_derivative_grant` CPI on the provided License Program.
+- If CPI fails → `LicenseValidationFailed`.
 - Does not mutate other fields.
 
 No delete allowed.
@@ -564,7 +552,6 @@ Every account struct must include:
 
 - 8 bytes discriminator
 - All fixed fields
-- Explicitly bounded Vec sizing
 - 1 byte bump
 
 Anchor space must be calculated explicitly.

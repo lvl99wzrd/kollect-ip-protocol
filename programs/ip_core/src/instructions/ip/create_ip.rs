@@ -4,7 +4,6 @@ use anchor_spl::token::{transfer, Token, TokenAccount, Transfer};
 use crate::error::IpCoreError;
 use crate::events::IpCreated;
 use crate::state::{Entity, IpAccount, ProtocolConfig, ProtocolTreasury, IP_ACCOUNT_SIZE};
-use crate::utils::multisig::{extract_signer_keys, validate_multisig_keys};
 use crate::utils::seeds::{CONFIG_SEED, ENTITY_SEED, IP_SEED, TREASURY_SEED};
 
 /// Accounts required for create_ip instruction.
@@ -23,7 +22,7 @@ pub struct CreateIp<'info> {
 
     /// The entity registering this IP.
     #[account(
-        seeds = [ENTITY_SEED, registrant_entity.creator.as_ref(), &registrant_entity.handle],
+        seeds = [ENTITY_SEED, registrant_entity.creator.as_ref(), &registrant_entity.index.to_le_bytes()],
         bump = registrant_entity.bump
     )]
     pub registrant_entity: Account<'info, Entity>,
@@ -44,30 +43,38 @@ pub struct CreateIp<'info> {
     pub treasury: Account<'info, ProtocolTreasury>,
 
     /// Treasury's token account to receive the registration fee.
+    /// Optional when registration fee is 0.
     #[account(
         mut,
         constraint = treasury_token_account.mint == config.registration_currency @ IpCoreError::InvalidTokenMint,
         constraint = treasury_token_account.owner == treasury.key() @ IpCoreError::InvalidTreasuryAuthority
     )]
-    pub treasury_token_account: Account<'info, TokenAccount>,
+    pub treasury_token_account: Option<Account<'info, TokenAccount>>,
 
     /// Payer's token account to pay the registration fee.
+    /// Optional when registration fee is 0.
     #[account(
         mut,
         constraint = payer_token_account.mint == config.registration_currency @ IpCoreError::InvalidTokenMint
     )]
-    pub payer_token_account: Account<'info, TokenAccount>,
+    pub payer_token_account: Option<Account<'info, TokenAccount>>,
+
+    /// The entity controller (must sign).
+    #[account(
+        constraint = controller.key() == registrant_entity.controller @ IpCoreError::Unauthorized
+    )]
+    pub controller: Signer<'info>,
 
     /// Payer for account creation and registration fee.
     #[account(mut)]
     pub payer: Signer<'info>,
 
     /// SPL Token program.
-    pub token_program: Program<'info, Token>,
+    /// Optional when registration fee is 0.
+    pub token_program: Option<Program<'info, Token>>,
 
     /// System program for account creation.
     pub system_program: Program<'info, System>,
-    // Remaining accounts are signers (entity controllers)
 }
 
 /// Create a new IP registration.
@@ -79,29 +86,37 @@ pub struct CreateIp<'info> {
 /// * `content_hash` - SHA-256 hash of the content being registered
 ///
 /// # Errors
-/// * `IpCoreError::InsufficientSignatures` - Entity multisig threshold not met
+/// * `IpCoreError::Unauthorized` - Signer is not the entity controller
 /// * `IpCoreError::InvalidTokenMint` - Token account mint doesn't match config
 /// * `IpCoreError::InvalidTreasuryAuthority` - Treasury token account not owned by treasury
 pub fn handler(ctx: Context<CreateIp>, content_hash: [u8; 32]) -> Result<()> {
     let registrant_entity = &ctx.accounts.registrant_entity;
     let config = &ctx.accounts.config;
 
-    // Validate multisig
-    let signer_keys = extract_signer_keys(ctx.remaining_accounts);
-    validate_multisig_keys(
-        &signer_keys,
-        &registrant_entity.controllers,
-        registrant_entity.signature_threshold,
-    )?;
-
     // Transfer registration fee BEFORE initializing the IP account
     if config.registration_fee > 0 {
+        let payer_token_account = ctx
+            .accounts
+            .payer_token_account
+            .as_ref()
+            .ok_or(error!(IpCoreError::MissingTokenAccount))?;
+        let treasury_token_account = ctx
+            .accounts
+            .treasury_token_account
+            .as_ref()
+            .ok_or(error!(IpCoreError::MissingTokenAccount))?;
+        let token_program = ctx
+            .accounts
+            .token_program
+            .as_ref()
+            .ok_or(error!(IpCoreError::MissingTokenProgram))?;
+
         transfer(
             CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
+                token_program.to_account_info(),
                 Transfer {
-                    from: ctx.accounts.payer_token_account.to_account_info(),
-                    to: ctx.accounts.treasury_token_account.to_account_info(),
+                    from: payer_token_account.to_account_info(),
+                    to: treasury_token_account.to_account_info(),
                     authority: ctx.accounts.payer.to_account_info(),
                 },
             ),

@@ -1,45 +1,11 @@
-use crate::constants::MAX_HANDLE_LENGTH;
 use crate::error::IpCoreError;
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::instruction::{AccountMeta, Instruction};
+use anchor_lang::solana_program::program::invoke;
 
-/// Validates that a handle is lowercase alphanumeric (with underscores) and within length limits.
-///
-/// Handle requirements:
-/// - Must be 1-32 characters
-/// - Must contain only lowercase letters (a-z), digits (0-9), and underscores (_)
-/// - Regex equivalent: `^[a-z0-9_]{1,32}$`
-///
-/// # Arguments
-/// * `handle` - The handle bytes to validate
-///
-/// # Returns
-/// * `Ok(())` if valid
-/// * `Err(IpCoreError::EmptyHandle)` if handle is empty
-/// * `Err(IpCoreError::HandleTooLong)` if handle exceeds 32 chars
-/// * `Err(IpCoreError::InvalidHandle)` if handle contains invalid characters
-pub fn validate_handle(handle: &[u8]) -> Result<()> {
-    // Find the actual length (excluding null padding)
-    let actual_len = handle.iter().position(|&b| b == 0).unwrap_or(handle.len());
-
-    // Check for empty handle
-    if actual_len == 0 {
-        return Err(IpCoreError::EmptyHandle.into());
-    }
-
-    // Check length limit
-    if actual_len > MAX_HANDLE_LENGTH {
-        return Err(IpCoreError::HandleTooLong.into());
-    }
-
-    // Validate characters: must be lowercase alphanumeric or underscore (a-z, 0-9, _)
-    for &byte in &handle[..actual_len] {
-        if !byte.is_ascii_lowercase() && !byte.is_ascii_digit() && byte != b'_' {
-            return Err(IpCoreError::InvalidHandle.into());
-        }
-    }
-
-    Ok(())
-}
+/// Anchor discriminator for `validate_derivative_grant` instruction.
+/// Computed as `sha256("global:validate_derivative_grant")[..8]`.
+const VALIDATE_DERIVATIVE_GRANT_DISCRIMINATOR: [u8; 8] = [167, 77, 116, 41, 26, 181, 191, 240];
 
 /// Validates that a CID is not empty.
 ///
@@ -81,51 +47,49 @@ pub fn validate_revision_increment(current: u64, expected: u64) -> Result<()> {
     Ok(())
 }
 
-/// Validates that the signature threshold is within valid bounds.
+/// Validates a license grant for derivative creation via CPI to the license program.
+///
+/// Invokes the `validate_derivative_grant` instruction on the license program,
+/// which performs all license-specific validation (origin IP match, grantee match,
+/// derivatives allowed, expiration check).
 ///
 /// # Arguments
-/// * `threshold` - The signature threshold
-/// * `controller_count` - The number of controllers
+/// * `license_program` - The license program to invoke
+/// * `license_grant` - The license grant account to validate
+/// * `license` - The license account referenced by the grant
+/// * `parent_ip` - The parent IP being derived from
+/// * `grantee_entity` - The entity claiming the grant
 ///
-/// # Returns
-/// * `Ok(())` if 1 <= threshold <= controller_count
-/// * `Err(IpCoreError::InvalidThreshold)` otherwise
-pub fn validate_threshold(threshold: u8, controller_count: usize) -> Result<()> {
-    if threshold == 0 || threshold as usize > controller_count {
-        return Err(IpCoreError::InvalidThreshold.into());
-    }
+/// # Errors
+/// Returns any error propagated from the license program's validation.
+pub fn validate_derivative_grant_cpi<'info>(
+    license_program: &AccountInfo<'info>,
+    license_grant: &AccountInfo<'info>,
+    license: &AccountInfo<'info>,
+    parent_ip: &AccountInfo<'info>,
+    grantee_entity: &AccountInfo<'info>,
+) -> Result<()> {
+    let ix = Instruction {
+        program_id: license_program.key(),
+        accounts: vec![
+            AccountMeta::new_readonly(license_grant.key(), false),
+            AccountMeta::new_readonly(license.key(), false),
+            AccountMeta::new_readonly(parent_ip.key(), false),
+            AccountMeta::new_readonly(grantee_entity.key(), false),
+        ],
+        data: VALIDATE_DERIVATIVE_GRANT_DISCRIMINATOR.to_vec(),
+    };
 
-    Ok(())
-}
-
-/// Validates a controller list.
-///
-/// # Arguments
-/// * `controllers` - The list of controller pubkeys
-/// * `max_controllers` - Maximum allowed controllers
-///
-/// # Returns
-/// * `Ok(())` if valid
-/// * `Err(IpCoreError::EmptyControllerList)` if list is empty
-/// * `Err(IpCoreError::ControllerLimitExceeded)` if too many controllers
-/// * `Err(IpCoreError::DuplicateController)` if duplicates exist
-pub fn validate_controllers(controllers: &[Pubkey], max_controllers: usize) -> Result<()> {
-    if controllers.is_empty() {
-        return Err(IpCoreError::EmptyControllerList.into());
-    }
-
-    if controllers.len() > max_controllers {
-        return Err(IpCoreError::ControllerLimitExceeded.into());
-    }
-
-    // Check for duplicates using O(n^2) since max is 5
-    for i in 0..controllers.len() {
-        for j in (i + 1)..controllers.len() {
-            if controllers[i] == controllers[j] {
-                return Err(IpCoreError::DuplicateController.into());
-            }
-        }
-    }
+    invoke(
+        &ix,
+        &[
+            license_grant.clone(),
+            license.clone(),
+            parent_ip.clone(),
+            grantee_entity.clone(),
+            license_program.clone(),
+        ],
+    )?;
 
     Ok(())
 }
@@ -133,29 +97,6 @@ pub fn validate_controllers(controllers: &[Pubkey], max_controllers: usize) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_validate_handle_valid() {
-        assert!(validate_handle(b"validhandle123").is_ok());
-        assert!(validate_handle(b"a").is_ok());
-        assert!(validate_handle(b"12345").is_ok());
-        assert!(validate_handle(b"abc123def456").is_ok());
-        // Underscores are allowed
-        assert!(validate_handle(b"handle_with_underscore").is_ok());
-        assert!(validate_handle(b"my_entity_1").is_ok());
-    }
-
-    #[test]
-    fn test_validate_handle_invalid() {
-        // Uppercase not allowed
-        assert!(validate_handle(b"InvalidHandle").is_err());
-        // Dashes not allowed
-        assert!(validate_handle(b"handle-with-dash").is_err());
-        // Spaces not allowed
-        assert!(validate_handle(b"handle with spaces").is_err());
-        // Other special characters not allowed
-        assert!(validate_handle(b"handle@special").is_err());
-    }
 
     #[test]
     fn test_validate_revision_increment() {

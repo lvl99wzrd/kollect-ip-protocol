@@ -7,10 +7,10 @@ pub mod instructions;
 pub mod state;
 pub mod utils;
 
-use constants::{MAX_CID_LENGTH, MAX_HANDLE_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
+use constants::{MAX_CID_LENGTH, MAX_SCHEMA_ID_LENGTH, MAX_VERSION_LENGTH};
 use instructions::*;
 
-declare_id!("CSSfTXVfCUmvZCEjPZxFne5EPewzTGCyYAybLNihLQM1");
+declare_id!("ARoG6DV6Mx4w44tM9QGYoMaqXUBM6zCwyMBRDLt5vAap");
 
 #[program]
 pub mod ip_core {
@@ -51,31 +51,16 @@ pub mod ip_core {
     // ===== Entity Instructions =====
 
     /// Create a new entity.
-    pub fn create_entity(
-        ctx: Context<CreateEntity>,
-        handle: [u8; MAX_HANDLE_LENGTH],
-        additional_controllers: Vec<Pubkey>,
-        signature_threshold: u8,
-    ) -> Result<()> {
-        instructions::entity::create_entity::handler(
-            ctx,
-            handle,
-            additional_controllers,
-            signature_threshold,
-        )
+    pub fn create_entity(ctx: Context<CreateEntity>) -> Result<()> {
+        instructions::entity::create_entity::handler(ctx)
     }
 
-    /// Update entity controllers by replacing the entire controller list.
-    pub fn update_entity_controllers(
-        ctx: Context<UpdateEntityControllers>,
-        new_controllers: Vec<Pubkey>,
-        new_threshold: u8,
+    /// Transfer entity control to a new controller.
+    pub fn transfer_entity_control(
+        ctx: Context<TransferEntityControl>,
+        new_controller: Pubkey,
     ) -> Result<()> {
-        instructions::entity::update_entity_controllers::handler(
-            ctx,
-            new_controllers,
-            new_threshold,
-        )
+        instructions::entity::transfer_entity_control::handler(ctx, new_controller)
     }
 
     // ===== Metadata Instructions =====
@@ -124,18 +109,12 @@ pub mod ip_core {
     // ===== Derivative Instructions =====
 
     /// Create a derivative link between IPs.
-    pub fn create_derivative_link(
-        ctx: Context<CreateDerivativeLink>,
-        license_program_id: Pubkey,
-    ) -> Result<()> {
-        instructions::derivative::create_derivative_link::handler(ctx, license_program_id)
+    pub fn create_derivative_link(ctx: Context<CreateDerivativeLink>) -> Result<()> {
+        instructions::derivative::create_derivative_link::handler(ctx)
     }
 
     /// Update the license on a derivative link.
-    pub fn update_derivative_license(
-        ctx: Context<UpdateDerivativeLicense>,
-        license_program_id: Pubkey,
-    ) -> Result<()> {
-        instructions::derivative::update_derivative_license::handler(ctx, license_program_id)
+    pub fn update_derivative_license(ctx: Context<UpdateDerivativeLicense>) -> Result<()> {
+        instructions::derivative::update_derivative_license::handler(ctx)
     }
 }

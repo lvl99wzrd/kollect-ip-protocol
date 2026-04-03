@@ -1,22 +1,30 @@
 use anchor_lang::prelude::*;
 
-use crate::constants::{MAX_CONTROLLERS, MAX_HANDLE_LENGTH};
 use crate::error::IpCoreError;
 use crate::events::EntityCreated;
-use crate::state::{Entity, ENTITY_SIZE};
-use crate::utils::seeds::ENTITY_SEED;
-use crate::utils::validation::{validate_handle, validate_threshold};
+use crate::state::{CreatorEntityCounter, Entity, CREATOR_ENTITY_COUNTER_SIZE, ENTITY_SIZE};
+use crate::utils::seeds::{CREATOR_ENTITY_COUNTER_SEED, ENTITY_SEED};
 
 /// Accounts required for create_entity instruction.
 #[derive(Accounts)]
-#[instruction(handle: [u8; MAX_HANDLE_LENGTH])]
 pub struct CreateEntity<'info> {
+    /// The per-creator entity counter (initialized on first entity creation).
+    #[account(
+        init_if_needed,
+        payer = creator,
+        space = CREATOR_ENTITY_COUNTER_SIZE,
+        seeds = [CREATOR_ENTITY_COUNTER_SEED, creator.key().as_ref()],
+        bump
+    )]
+    pub counter: Account<'info, CreatorEntityCounter>,
+
     /// The entity account to create (PDA).
+    /// Seeds use the current counter value as the entity index.
     #[account(
         init,
         payer = creator,
         space = ENTITY_SIZE,
-        seeds = [ENTITY_SEED, creator.key().as_ref(), &handle],
+        seeds = [ENTITY_SEED, creator.key().as_ref(), &counter.entity_count.to_le_bytes()],
         bump
     )]
     pub entity: Account<'info, Entity>,
@@ -32,54 +40,44 @@ pub struct CreateEntity<'info> {
 
 /// Create a new entity.
 ///
+/// The entity index is automatically derived from the creator's entity counter.
+/// On first call, the counter PDA is initialized. Each subsequent call increments
+/// the counter, producing a new deterministic entity PDA.
+///
 /// # Arguments
 /// * `ctx` - Context containing accounts
-/// * `handle` - Unique handle for this entity (lowercase alphanumeric, 1-32 chars)
-/// * `additional_controllers` - Additional controller pubkeys (optional, max 4 since creator is first)
-/// * `signature_threshold` - Required number of signatures (1 to total controllers)
 ///
 /// # Errors
-/// * `IpCoreError::InvalidHandle` - Handle contains invalid characters
-/// * `IpCoreError::HandleTooLong` - Handle exceeds 32 characters
-/// * `IpCoreError::EmptyHandle` - Handle is empty
-/// * `IpCoreError::InvalidThreshold` - Threshold is invalid
-/// * `IpCoreError::ControllerLimitExceeded` - Too many controllers
-pub fn handler(
-    ctx: Context<CreateEntity>,
-    handle: [u8; MAX_HANDLE_LENGTH],
-    additional_controllers: Vec<Pubkey>,
-    signature_threshold: u8,
-) -> Result<()> {
-    // Validate handle format
-    validate_handle(&handle)?;
+/// * `IpCoreError::ArithmeticOverflow` - Entity count overflow
+pub fn handler(ctx: Context<CreateEntity>) -> Result<()> {
+    let creator_key = ctx.accounts.creator.key();
+    let counter = &mut ctx.accounts.counter;
 
-    // Build controllers list with creator first
-    let mut controllers = vec![ctx.accounts.creator.key()];
-    controllers.extend(additional_controllers);
+    // Capture the index for this entity (current count before increment)
+    let entity_index = counter.entity_count;
 
-    // Validate controller count
-    if controllers.len() > MAX_CONTROLLERS {
-        return Err(IpCoreError::ControllerLimitExceeded.into());
-    }
+    // Initialize counter fields (idempotent for init_if_needed)
+    counter.creator = creator_key;
+    counter.bump = ctx.bumps.counter;
 
-    // Validate threshold
-    validate_threshold(signature_threshold, controllers.len())?;
+    // Increment the counter for the next entity
+    counter.entity_count = counter
+        .entity_count
+        .checked_add(1)
+        .ok_or(IpCoreError::ArithmeticOverflow)?;
 
     // Get current timestamp
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
-    // Capture values needed for event before mutable borrow
+    // Capture entity key before mutable borrow
     let entity_key = ctx.accounts.entity.key();
-    let creator_key = ctx.accounts.creator.key();
-    let controller_count = controllers.len() as u8;
 
-    // Initialize entity
+    // Initialize entity with creator as controller
     let entity = &mut ctx.accounts.entity;
     entity.creator = creator_key;
-    entity.handle = handle;
-    entity.controllers = controllers;
-    entity.signature_threshold = signature_threshold;
+    entity.index = entity_index;
+    entity.controller = creator_key;
     entity.current_metadata_revision = 0;
     entity.created_at = now;
     entity.updated_at = now;
@@ -88,13 +86,12 @@ pub fn handler(
     emit!(EntityCreated {
         entity: entity_key,
         creator: creator_key,
-        handle,
-        controller_count,
-        signature_threshold,
+        index: entity_index,
+        controller: creator_key,
         created_at: now,
     });
 
-    msg!("Entity created");
+    msg!("Entity created (index {})", entity_index);
 
     Ok(())
 }

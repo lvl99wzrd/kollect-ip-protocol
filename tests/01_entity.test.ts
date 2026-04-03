@@ -3,7 +3,11 @@ import { Program } from "@coral-xyz/anchor";
 import { IpCore } from "../target/types/ip_core";
 import { Keypair, PublicKey } from "@solana/web3.js";
 import { expect } from "chai";
-import { padBytes } from "../utils/helper";
+import {
+  deriveEntityPda,
+  deriveCounterPda,
+  getEntityCount,
+} from "../utils/helper";
 
 describe("ip_core entity", () => {
   const provider = anchor.AnchorProvider.env();
@@ -13,230 +17,84 @@ describe("ip_core entity", () => {
   const creator = provider.wallet as anchor.Wallet;
 
   describe("create_entity", () => {
-    it("creates an entity with valid handle", async () => {
-      const handle = padBytes("testentity", 32);
+    it("creates an entity with auto-assigned index", async () => {
+      const indexBefore = await getEntityCount(program, creator.publicKey);
 
-      const [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
+      const [entityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        indexBefore,
       );
 
-      await program.methods.createEntity(handle, [], 1).rpc();
+      await program.methods
+        .createEntity()
+        .accountsPartial({ entity: entityPda })
+        .rpc();
 
       const entity = await program.account.entity.fetch(entityPda);
       expect(entity.creator.toString()).to.equal(creator.publicKey.toString());
-      expect(entity.controllers.length).to.equal(1);
-      expect(entity.controllers[0].toString()).to.equal(
+      expect(entity.controller.toString()).to.equal(
         creator.publicKey.toString(),
       );
-      expect(entity.signatureThreshold).to.equal(1);
+      expect(entity.index.toNumber()).to.equal(indexBefore);
       expect(entity.currentMetadataRevision.toNumber()).to.equal(0);
-    });
 
-    it("creates an entity with multiple controllers", async () => {
-      const handle = padBytes("multisig_entity", 32);
-      const controller2 = Keypair.generate();
-      const controller3 = Keypair.generate();
-
-      const [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
-        program.programId,
-      );
-
-      await program.methods
-        .createEntity(handle, [controller2.publicKey, controller3.publicKey], 2)
-        .rpc();
-
-      const entity = await program.account.entity.fetch(entityPda);
-      expect(entity.controllers.length).to.equal(3);
-      expect(entity.signatureThreshold).to.equal(2);
-    });
-
-    it("fails with invalid handle (uppercase)", async () => {
-      const handle = padBytes("@InvalidHandle", 32);
-
-      const [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
-        program.programId,
-      );
-
-      try {
-        await program.methods.createEntity(handle, [], 1).rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("InvalidHandle");
-      }
-    });
-
-    it("fails with invalid threshold", async () => {
-      const handle = padBytes("bad_threshold", 32);
-
-      const [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
-        program.programId,
-      );
-
-      try {
-        await program.methods
-          .createEntity(handle, [], 5) // threshold > controllers
-          .rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("InvalidThreshold");
-      }
-    });
-
-    it("fails with too many controllers", async () => {
-      const handle = padBytes("too_many", 32);
-
-      const [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
-        program.programId,
-      );
-
-      // Create 5 additional controllers (6 total with creator)
-      const extraControllers = Array.from(
-        { length: 5 },
-        () => Keypair.generate().publicKey,
-      );
-
-      try {
-        await program.methods.createEntity(handle, extraControllers, 1).rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("ControllerLimitExceeded");
-      }
+      // Verify counter incremented
+      const indexAfter = await getEntityCount(program, creator.publicKey);
+      expect(indexAfter).to.equal(indexBefore + 1);
     });
   });
 
-  describe("update_entity_controllers", () => {
+  describe("transfer_entity_control", () => {
     let entityPda: PublicKey;
-    const handle = padBytes("update_entity", 32);
 
     before(async () => {
-      [entityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(handle),
-        ],
+      const index = await getEntityCount(program, creator.publicKey);
+      [entityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        index,
       );
 
-      await program.methods.createEntity(handle, [], 1).rpc();
+      await program.methods
+        .createEntity()
+        .accountsPartial({ entity: entityPda })
+        .rpc();
     });
 
-    it("replaces controller list with additional controller", async () => {
+    it("transfers control to a new controller", async () => {
       const newController = Keypair.generate();
 
-      // Replace with both creator and new controller
       await program.methods
-        .updateEntityControllers(
-          [creator.publicKey, newController.publicKey],
-          1,
-        )
+        .transferEntityControl(newController.publicKey)
         .accounts({
           entity: entityPda,
+          controller: creator.publicKey,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       const entity = await program.account.entity.fetch(entityPda);
-      expect(entity.controllers.length).to.equal(2);
-      expect(
-        entity.controllers.some(
-          (c) => c.toString() === newController.publicKey.toString(),
-        ),
-      ).to.be.true;
-      expect(
-        entity.controllers.some(
-          (c) => c.toString() === creator.publicKey.toString(),
-        ),
-      ).to.be.true;
+      expect(entity.controller.toString()).to.equal(
+        newController.publicKey.toString(),
+      );
     });
 
-    it("fails with empty controller list", async () => {
+    it("fails when non-controller tries to transfer", async () => {
+      const fakeController = Keypair.generate();
+
       try {
         await program.methods
-          .updateEntityControllers([], 1)
+          .transferEntityControl(fakeController.publicKey)
           .accounts({
             entity: entityPda,
+            controller: fakeController.publicKey,
           })
-          .remainingAccounts([
-            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-          ])
+          .signers([fakeController])
           .rpc();
         expect.fail("Should have failed");
       } catch (err) {
-        expect(err.toString()).to.include("EmptyControllerList");
+        expect(err.toString()).to.include("Unauthorized");
       }
-    });
-
-    it("fails with duplicate controllers", async () => {
-      try {
-        await program.methods
-          .updateEntityControllers([creator.publicKey, creator.publicKey], 1)
-          .accounts({
-            entity: entityPda,
-          })
-          .remainingAccounts([
-            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-          ])
-          .rpc();
-        expect.fail("Should have failed");
-      } catch (err) {
-        expect(err.toString()).to.include("DuplicateController");
-      }
-    });
-
-    it("successfully replaces controllers removing creator", async () => {
-      const newController = Keypair.generate();
-
-      // Replace with only the new controller (removing creator)
-      await program.methods
-        .updateEntityControllers([newController.publicKey], 1)
-        .accounts({
-          entity: entityPda,
-        })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
-        .rpc();
-
-      const entity = await program.account.entity.fetch(entityPda);
-      expect(entity.controllers.length).to.equal(1);
-      expect(
-        entity.controllers.some(
-          (c) => c.toString() === newController.publicKey.toString(),
-        ),
-      ).to.be.true;
-      expect(
-        entity.controllers.some(
-          (c) => c.toString() === creator.publicKey.toString(),
-        ),
-      ).to.be.false;
     });
   });
 });

@@ -43,8 +43,6 @@ All programs must follow:
 - All accounts MUST be PDA-derived.
 - No randomness.
 - No nonce-based identity derivation.
-- No global counters.
-- No auto-increment IDs.
 - No clock-based uniqueness logic.
 
 Account identity must be fully deterministic from seeds.
@@ -90,3 +88,8 @@ It does NOT:
 It is a deterministic state machine, not a legal authority.
 
 All logic must preserve this neutrality.
+
+# 6. Editing Rules
+
+- NEVER edit files in `programs/ip_core`
+- ONLY edit files in `programs/kollect`

@@ -9,7 +9,12 @@ import {
 } from "@solana/spl-token";
 import { expect } from "chai";
 import * as path from "path";
-import { padBytes, hashFile } from "../utils/helper";
+import {
+  padBytes,
+  hashFile,
+  deriveEntityPda,
+  getEntityCount,
+} from "../utils/helper";
 
 describe("ip_core ip", () => {
   const provider = anchor.AnchorProvider.env();
@@ -129,27 +134,17 @@ describe("ip_core ip", () => {
     }
 
     // Create entity
-    const handle = padBytes("ip_owner", 32);
-    [entityPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("entity"),
-        creator.publicKey.toBuffer(),
-        Buffer.from(handle),
-      ],
+    const entityIndex = await getEntityCount(program, creator.publicKey);
+    [entityPda] = deriveEntityPda(
       program.programId,
+      creator.publicKey,
+      entityIndex,
     );
 
-    let entityExists = false;
-    try {
-      await program.account.entity.fetch(entityPda);
-      entityExists = true;
-    } catch {
-      // Entity doesn't exist
-    }
-
-    if (!entityExists) {
-      await program.methods.createEntity(handle, [], 1).rpc();
-    }
+    await program.methods
+      .createEntity()
+      .accountsPartial({ entity: entityPda })
+      .rpc();
   });
 
   describe("create_ip", () => {
@@ -167,14 +162,12 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       const ip = await program.account.ipAccount.fetch(ipPda);
@@ -213,28 +206,24 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Attempt to create another IP with the same content hash from same entity should fail
       try {
         await program.methods
           .createIp(contentHash)
-          .accounts({
+          .accountsPartial({
             registrantEntity: entityPda,
+            controller: creator.publicKey,
             treasuryTokenAccount: treasuryTokenAccount,
             payerTokenAccount: payerTokenAccount,
           })
-          .remainingAccounts([
-            { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-          ])
           .rpc();
 
         expect.fail(
@@ -252,32 +241,29 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Create a different entity
-      const differentHandle = padBytes("different_ip", 32);
-      const [differentEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(differentHandle),
-        ],
+      const differentEntityIndex = await getEntityCount(
+        program,
+        creator.publicKey,
+      );
+      const [differentEntityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        differentEntityIndex,
       );
 
-      try {
-        await program.methods.createEntity(differentHandle, [], 1).rpc();
-      } catch {
-        // Already exists
-      }
+      await program.methods
+        .createEntity()
+        .accountsPartial({ entity: differentEntityPda })
+        .rpc();
 
       // Different entity can create IP with the same content hash
       const [ipPdaEntityA] = PublicKey.findProgramAddressSync(
@@ -300,14 +286,12 @@ describe("ip_core ip", () => {
       // Create IP with different entity using same content hash - should succeed
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: differentEntityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Verify both IPs exist with same content hash but different registrants
@@ -318,6 +302,76 @@ describe("ip_core ip", () => {
       expect(ipB.registrantEntity.toString()).to.equal(
         differentEntityPda.toString(),
       );
+    });
+
+    it("creates an IP without token accounts when fee is 0", async () => {
+      // Set fee to 0
+      await program.methods
+        .updateConfig({
+          newAuthority: null,
+          newTreasury: null,
+          newRegistrationCurrency: null,
+          newRegistrationFee: new anchor.BN(0),
+        })
+        .rpc();
+
+      const contentHash = uniqueHash();
+
+      const [ipPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("ip"), entityPda.toBuffer(), Buffer.from(contentHash)],
+        program.programId,
+      );
+
+      await program.methods
+        .createIp(contentHash)
+        .accountsPartial({
+          registrantEntity: entityPda,
+          controller: creator.publicKey,
+          treasuryTokenAccount: null,
+          payerTokenAccount: null,
+          tokenProgram: null,
+        })
+        .rpc();
+
+      const ip = await program.account.ipAccount.fetch(ipPda);
+      expect(ip.registrantEntity.toString()).to.equal(entityPda.toString());
+      expect(ip.currentOwnerEntity.toString()).to.equal(entityPda.toString());
+      expect(ip.currentMetadataRevision.toNumber()).to.equal(0);
+
+      // Restore fee
+      await program.methods
+        .updateConfig({
+          newAuthority: null,
+          newTreasury: null,
+          newRegistrationCurrency: null,
+          newRegistrationFee: new anchor.BN(1_000_000),
+        })
+        .rpc();
+    });
+
+    it("fails when fee > 0 but token accounts are missing", async () => {
+      const contentHash = uniqueHash();
+
+      try {
+        await program.methods
+          .createIp(contentHash)
+          .accountsPartial({
+            registrantEntity: entityPda,
+            controller: creator.publicKey,
+            treasuryTokenAccount: null,
+            payerTokenAccount: null,
+            tokenProgram: null,
+          })
+          .rpc();
+
+        expect.fail(
+          "Expected transaction to fail when token accounts are missing with non-zero fee",
+        );
+      } catch (error: any) {
+        expect(error.toString()).to.include(
+          "Token accounts are required when registration fee is non-zero",
+        );
+      }
     });
   });
 
@@ -335,32 +389,26 @@ describe("ip_core ip", () => {
 
       await program.methods
         .createIp(contentHash)
-        .accounts({
+        .accountsPartial({
           registrantEntity: entityPda,
+          controller: creator.publicKey,
           treasuryTokenAccount: treasuryTokenAccount,
           payerTokenAccount: payerTokenAccount,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       // Create new owner entity
-      const newHandle = padBytes("new_owner", 32);
-      [newOwnerEntityPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("entity"),
-          creator.publicKey.toBuffer(),
-          Buffer.from(newHandle),
-        ],
+      const newOwnerIndex = await getEntityCount(program, creator.publicKey);
+      [newOwnerEntityPda] = deriveEntityPda(
         program.programId,
+        creator.publicKey,
+        newOwnerIndex,
       );
 
-      try {
-        await program.methods.createEntity(newHandle, [], 1).rpc();
-      } catch {
-        // Already exists
-      }
+      await program.methods
+        .createEntity()
+        .accountsPartial({ entity: newOwnerEntityPda })
+        .rpc();
     });
 
     it("transfers IP ownership", async () => {
@@ -371,14 +419,12 @@ describe("ip_core ip", () => {
 
       await program.methods
         .transferIp()
-        .accounts({
+        .accountsPartial({
           ip: ipPda,
           currentOwnerEntity: entityPda,
           newOwnerEntity: newOwnerEntityPda,
+          controller: creator.publicKey,
         })
-        .remainingAccounts([
-          { pubkey: creator.publicKey, isSigner: true, isWritable: false },
-        ])
         .rpc();
 
       const ipAfter = await program.account.ipAccount.fetch(ipPda);

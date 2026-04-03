@@ -19,37 +19,9 @@ pub enum IpCoreError {
     #[msg("Invalid authority provided")]
     InvalidAuthority,
 
-    /// The signature threshold is invalid (must be 1 <= threshold <= controllers.len()).
-    #[msg("Invalid threshold: must be between 1 and number of controllers")]
-    InvalidThreshold,
-
-    /// Cannot add more controllers, maximum limit reached.
-    #[msg("Controller limit exceeded: maximum is 5 controllers")]
-    ControllerLimitExceeded,
-
-    /// The specified controller was not found in the controller list.
-    #[msg("Controller not found in the controller list")]
-    ControllerNotFound,
-
-    /// Not enough valid signatures to meet the threshold.
-    #[msg("Insufficient signatures: threshold not met")]
-    InsufficientSignatures,
-
     /// The entity account has not been initialized.
     #[msg("Entity has not been initialized")]
     EntityNotInitialized,
-
-    /// The handle contains invalid characters (must be lowercase alphanumeric).
-    #[msg("Invalid handle: must be lowercase alphanumeric (a-z, 0-9)")]
-    InvalidHandle,
-
-    /// The handle exceeds the maximum allowed length.
-    #[msg("Handle too long: maximum length is 32 characters")]
-    HandleTooLong,
-
-    /// The handle is already registered for this creator.
-    #[msg("Handle already exists for this creator")]
-    HandleAlreadyExists,
 
     /// The referenced metadata schema does not exist.
     #[msg("Metadata schema not found")]
@@ -79,29 +51,9 @@ pub enum IpCoreError {
     #[msg("CID cannot be empty")]
     EmptyCid,
 
-    /// The handle cannot be empty.
-    #[msg("Handle cannot be empty")]
-    EmptyHandle,
-
-    /// Cannot remove the last controller from an entity.
-    #[msg("Cannot remove the last controller: entity must have at least one controller")]
-    CannotRemoveLastController,
-
-    /// Invalid license: not owned by license program.
-    #[msg("Invalid license: account not owned by license program")]
-    InvalidLicenseOwner,
-
-    /// Invalid license: does not reference the parent IP.
-    #[msg("Invalid license: does not reference the parent IP")]
-    InvalidLicenseOrigin,
-
-    /// License does not allow derivatives.
-    #[msg("License does not allow derivatives")]
-    DerivativesNotAllowed,
-
-    /// License has expired.
-    #[msg("License has expired")]
-    LicenseExpired,
+    /// License validation failed via CPI to the license program.
+    #[msg("License validation failed")]
+    LicenseValidationFailed,
 
     /// Invalid token mint for registration fee.
     #[msg("Invalid token mint: does not match registration currency")]
@@ -111,19 +63,11 @@ pub enum IpCoreError {
     #[msg("Invalid treasury token account authority")]
     InvalidTreasuryAuthority,
 
-    /// License grant does not reference the expected license.
-    #[msg("License grant does not reference the expected license")]
-    LicenseGrantMismatch,
+    /// Token accounts are required when registration fee is non-zero.
+    #[msg("Token accounts are required when registration fee is non-zero")]
+    MissingTokenAccount,
 
-    /// Grantee does not match the child owner entity.
-    #[msg("Grantee does not match the child owner entity")]
-    InvalidGrantee,
-
-    /// Duplicate controller in the controller list.
-    #[msg("Duplicate controller: each controller must be unique")]
-    DuplicateController,
-
-    /// Controller list cannot be empty.
-    #[msg("Controller list cannot be empty: entity must have at least one controller")]
-    EmptyControllerList,
+    /// Token program is required when registration fee is non-zero.
+    #[msg("Token program is required when registration fee is non-zero")]
+    MissingTokenProgram,
 }

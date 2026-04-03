@@ -55,6 +55,7 @@ programs/ip_core/src/
 │   ├── protocol_treasury.rs
 │   ├── metadata_schema.rs
 │   ├── metadata_account.rs
+│   ├── creator_entity_counter.rs
 │   ├── entity.rs
 │   ├── ip_account.rs
 │   └── derivative_link.rs
@@ -78,7 +79,7 @@ programs/ip_core/src/
 │   ├── entity/
 │   │   ├── mod.rs
 │   │   ├── create_entity.rs
-│   │   └── update_entity_controllers.rs
+│   │   └── transfer_entity_control.rs
 │   │
 │   ├── ip/
 │   │   ├── mod.rs
@@ -93,8 +94,7 @@ programs/ip_core/src/
 └── utils/
     ├── mod.rs
     ├── seeds.rs
-    ├── validation.rs
-    └── multisig.rs
+    └── validation.rs
 ```
 
 This structure is mandatory.
@@ -123,8 +123,6 @@ Must contain:
 - MAX_SCHEMA_ID_LENGTH = 32
 - MAX_VERSION_LENGTH = 16
 - MAX_CID_LENGTH = 96
-- MAX_HANDLE_LENGTH = 32
-- MAX_CONTROLLERS = 5
 - Any other global fixed limits
 
 No dynamic sizing.
@@ -200,24 +198,11 @@ No logic beyond deterministic seed construction.
 
 Contains:
 
-- Handle validation (regex enforcement)
 - Length validation helpers
 - Cross-account reference validation
 - Metadata revision validation
 
 No state mutation.
-
----
-
-## multisig.rs
-
-Contains:
-
-- Signature threshold validation
-- Controller membership validation
-- No account mutation
-
-Pure validation utilities only.
 
 ---
 
@@ -270,14 +255,13 @@ No additional migration scripts allowed.
 All Entity accounts must derive using:
 
 ```
-["entity", creator_pubkey, handle]
+["entity", creator_pubkey, index_le_bytes]
 ```
 
 Where:
 
-- handle is lowercase alphanumeric
-- length ∈ [1, 32]
-- stored as fixed [u8; MAX_HANDLE_LENGTH]
+- index is a u64 sequential index from CreatorEntityCounter
+- stored as 8-byte little-endian bytes
 
 No alternative derivation permitted.
 
